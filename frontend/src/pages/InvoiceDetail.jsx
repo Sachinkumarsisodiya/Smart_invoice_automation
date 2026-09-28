@@ -19,7 +19,8 @@ import {
   AlertCircle,
   ArrowDownRight,
   Mail,
-  Send
+  Send,
+  Plus
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { invoiceService } from '../services/invoiceService';

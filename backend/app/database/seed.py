@@ -26,6 +26,7 @@ def clean_demo_data(db: Session):
         db.query(Invoice).delete()
         db.query(Expense).delete()
         db.query(Notification).delete()
+        db.query(AuditLog).delete()
         db.query(Vendor).delete()
         db.commit()
         logger.info("Demo data wiped successfully. Clean workspace initialized.")
