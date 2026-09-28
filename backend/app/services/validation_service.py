@@ -34,11 +34,12 @@ class ValidationService:
 
         # 1. Zero / Negative Financial Checks
         if total_amount <= Decimal("0.00"):
-            errors.append("CRITICAL: Total invoice amount could not be verified (₹0.00). Manual verification required to prevent financial error.")
+            errors.append("CRITICAL: Total invoice amount could not be verified (INR 0.00). Manual verification required to prevent financial error.")
         if subtotal < Decimal("0.00"):
             errors.append(f"Subtotal cannot be negative: {subtotal}")
         if tax_amount < Decimal("0.00"):
             errors.append(f"Tax amount cannot be negative: {tax_amount}")
+
 
         # 2. Mathematical Consistency: Subtotal + Tax = Total (tolerance ±1.00 for rounding)
         if total_amount > Decimal("0.00") and subtotal > Decimal("0.00"):

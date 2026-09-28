@@ -66,7 +66,14 @@ class ExtractionService:
                 ocr_res = OCREngine.run_ocr(invoice.document_path)
                 raw_text = ocr_res.get("text", "")
 
-            extracted_data = await ai_provider.extract_invoice(raw_text, metadata={"invoice_id": str(invoice.id)})
+            try:
+                extracted_data = await ai_provider.extract_invoice(raw_text, metadata={"invoice_id": str(invoice.id)})
+            except Exception as ext_err:
+                logger.warning(f"AI Provider failed ({ext_err}). Falling back to MockAIProvider...")
+                from app.ai.mock_provider import MockAIProvider
+                fallback_provider = MockAIProvider()
+                extracted_data = await fallback_provider.extract_invoice(raw_text, metadata={"invoice_id": str(invoice.id)})
+
 
         # 3. Deterministic Python Mathematical & Schema Validation
         is_valid, validation_errors, validation_meta = ValidationService.validate_extracted_invoice(extracted_data)

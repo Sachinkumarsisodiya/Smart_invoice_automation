@@ -9,6 +9,12 @@ def setup_logging():
         "[%(asctime)s] [%(levelname)s] [%(name)s:%(lineno)d] - %(message)s"
     )
 
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     logging.basicConfig(
         level=log_level,
         format=log_format,
@@ -16,6 +22,7 @@ def setup_logging():
             logging.StreamHandler(sys.stdout)
         ]
     )
+
 
     # Silence overly verbose loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
