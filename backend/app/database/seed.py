@@ -61,6 +61,18 @@ def seed_database(db: Session | None = None):
                 "password": "Password123!",
                 "full_name": "Admin Local",
                 "role": UserRole.ADMIN
+            },
+            {
+                "email": "staff@smartinvoice.local",
+                "password": "Password123!",
+                "full_name": "Staff Local",
+                "role": UserRole.STAFF
+            },
+            {
+                "email": "viewer@smartinvoice.local",
+                "password": "Password123!",
+                "full_name": "Viewer Local",
+                "role": UserRole.VIEWER
             }
         ]
 
