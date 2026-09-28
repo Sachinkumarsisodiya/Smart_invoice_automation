@@ -261,7 +261,11 @@ export const Dashboard = () => {
             <div>
               <p className="text-xs font-medium text-slate-500">Avg AI Accuracy</p>
               <p className="text-lg font-bold text-indigo-600">
-                {stats?.average_ai_confidence ? `${Number(stats.average_ai_confidence * 100).toFixed(1)}%` : '98.5%'}
+                {stats?.average_ai_confidence 
+                  ? (Number(stats.average_ai_confidence) > 1 
+                      ? `${Number(stats.average_ai_confidence).toFixed(1)}%` 
+                      : `${(Number(stats.average_ai_confidence) * 100).toFixed(1)}%`)
+                  : '98.5%'}
               </p>
             </div>
           </div>
