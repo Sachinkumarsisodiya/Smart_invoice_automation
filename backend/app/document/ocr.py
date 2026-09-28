@@ -20,6 +20,7 @@ class OCREngine:
             "success": False,
             "engine": "pytesseract" if PYTESSERACT_AVAILABLE else "fallback_pymupdf",
             "page_count": 1,
+            "is_image": False,
             "error": None
         }
 
@@ -37,10 +38,9 @@ class OCREngine:
 
                 for i in range(len(doc)):
                     page = doc[i]
-                    # First try standard text
                     page_text = page.get_text("text").strip()
 
-                    # If page text is very sparse, render pixmap for OCR
+                    # If page text is sparse, try pixmap OCR if pytesseract is available
                     if len(page_text) < 30 and PYTESSERACT_AVAILABLE:
                         try:
                             pix = page.get_pixmap(dpi=200)
@@ -59,6 +59,7 @@ class OCREngine:
                 result["success"] = bool(combined)
 
             elif ext in ("png", "jpg", "jpeg"):
+                result["is_image"] = True
                 if PYTESSERACT_AVAILABLE:
                     try:
                         with Image.open(file_path) as img:
@@ -66,11 +67,12 @@ class OCREngine:
                             result["text"] = ocr_text.strip()
                             result["success"] = bool(result["text"])
                     except Exception as ocr_err:
-                        logger.warning(f"PyTesseract error on image: {ocr_err}")
+                        logger.warning(f"PyTesseract image OCR warning: {ocr_err}")
                         result["error"] = str(ocr_err)
                 else:
-                    result["text"] = "[OCR unavailable - install Tesseract on host machine for image OCR]"
-                    result["error"] = "pytesseract_not_configured"
+                    # Clean empty text; do NOT inject error text as raw document content
+                    result["text"] = ""
+                    result["error"] = "pytesseract_unavailable"
 
         except Exception as e:
             logger.error(f"OCR execution failed on {file_path}: {e}")

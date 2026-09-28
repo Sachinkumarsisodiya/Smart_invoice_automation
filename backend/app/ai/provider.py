@@ -36,3 +36,7 @@ class BaseAIProvider(ABC):
     async def extract_invoice(self, text_content: str, metadata: Optional[Dict[str, Any]] = None) -> ExtractedInvoiceSchema:
         """Extracts structured invoice information from raw document text."""
         pass
+
+    async def extract_from_image(self, image_path: str, mime_type: str = "image/jpeg", metadata: Optional[Dict[str, Any]] = None) -> ExtractedInvoiceSchema:
+        """Extracts structured invoice information directly from image files via Vision AI."""
+        return await self.extract_invoice("", metadata=metadata)

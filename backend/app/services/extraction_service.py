@@ -37,35 +37,54 @@ class ExtractionService:
         logger.info(f"Starting extraction pipeline for invoice #{invoice.invoice_number} (ID: {invoice.id})")
 
         # 1. Check if OCR is required
-        raw_text = ""
-        if invoice.raw_extracted_data and isinstance(invoice.raw_extracted_data, dict):
-            raw_text = invoice.raw_extracted_data.get("text", "")
-
-        if not raw_text or len(raw_text.strip()) < 30 or "[Image Document" in raw_text:
-            logger.info(f"Invoice {invoice.id} requires OCR. Running OCREngine...")
-            ocr_res = OCREngine.run_ocr(invoice.document_path)
-            if ocr_res.get("text"):
-                raw_text = ocr_res["text"]
-
+        # 1. Determine if document is an image or PDF
+        doc_ext = invoice.document_path.split(".")[-1].lower()
+        is_image = doc_ext in ("png", "jpg", "jpeg")
+        
         # 2. Invoke Switchable AI Provider
         ai_provider = get_ai_provider()
-        extracted_data = await ai_provider.extract_invoice(raw_text, metadata={"invoice_id": str(invoice.id)})
+        extracted_data = None
+
+        if is_image and hasattr(ai_provider, "extract_from_image") and getattr(ai_provider, "api_key", None):
+            try:
+                mime_type = "image/png" if doc_ext == "png" else "image/jpeg"
+                extracted_data = await ai_provider.extract_from_image(
+                    image_path=invoice.document_path,
+                    mime_type=mime_type,
+                    metadata={"invoice_id": str(invoice.id)}
+                )
+            except Exception as vision_err:
+                logger.warning(f"Vision extraction failed: {vision_err}. Falling back to OCR...")
+
+        raw_text = ""
+        if not extracted_data:
+            if invoice.raw_extracted_data and isinstance(invoice.raw_extracted_data, dict):
+                raw_text = invoice.raw_extracted_data.get("text", "")
+
+            if not raw_text or len(raw_text.strip()) < 10 or "[Image Document" in raw_text or "[OCR unavailable" in raw_text:
+                logger.info(f"Invoice {invoice.id} requires OCR. Running OCREngine...")
+                ocr_res = OCREngine.run_ocr(invoice.document_path)
+                raw_text = ocr_res.get("text", "")
+
+            extracted_data = await ai_provider.extract_invoice(raw_text, metadata={"invoice_id": str(invoice.id)})
 
         # 3. Deterministic Python Mathematical & Schema Validation
         is_valid, validation_errors, validation_meta = ValidationService.validate_extracted_invoice(extracted_data)
 
         # 4. Resolve or Match Vendor
         vendor = None
-        if extracted_data.vendor_name:
-            vendor = db.query(Vendor).filter(Vendor.name.ilike(extracted_data.vendor_name.strip())).first()
+        clean_v_name = (extracted_data.vendor_name or "").strip()
+        if clean_v_name and not clean_v_name.startswith("[") and clean_v_name not in ("Unassigned Vendor", "Unknown Vendor", "INV-UNKNOWN"):
+            vendor = db.query(Vendor).filter(Vendor.name.ilike(clean_v_name)).first()
             if not vendor:
                 # Create vendor record dynamically
                 vendor = Vendor(
-                    name=extracted_data.vendor_name.strip(),
+                    name=clean_v_name,
                     email=extracted_data.vendor_email,
                     gstin=extracted_data.vendor_gstin,
                     category="General",
-                    payment_terms_days=30
+                    payment_terms_days=30,
+                    active=True
                 )
                 db.add(vendor)
                 db.flush()

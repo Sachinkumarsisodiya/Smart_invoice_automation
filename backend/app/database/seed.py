@@ -41,7 +41,12 @@ def clean_demo_data(db: Session):
             db.query(InvoiceItem).filter(InvoiceItem.invoice_id == d_inv.id).delete(synchronize_session=False)
             db.delete(d_inv)
 
-        # 3. Clean up demo vendor links
+        # 3. Clean up demo and OCR error vendors
+        ocr_error_vendors = db.query(Vendor).filter(Vendor.name.like("[%")).all()
+        for ov in ocr_error_vendors:
+            db.query(Invoice).filter(Invoice.vendor_id == ov.id).delete(synchronize_session=False)
+            db.delete(ov)
+
         demo_vendor_names = [
             "Sharma Packaging Pvt Ltd",
             "Apex Cloud & IT Services",
