@@ -272,14 +272,14 @@ def send_invoice_payment_reminder(
 
 
 @router.post("/fetch-from-email")
-def fetch_invoices_from_email(
+async def fetch_invoices_from_email(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_staff_or_admin)
 ):
+    """Connects to the configured mailbox (e.g., sachinsisodiyaofc@gmail.com via IMAP)
+    and fetches unread or recent invoice attachments into SmartInvoice.
     """
-    Connects to the configured mailbox (e.g., sachinsisodiyaofc@gmail.com via IMAP)
-    and fetches unread invoice attachments into SmartInvoice.
-    """
-    result = EmailIngestionService.sync_mailbox(db=db, user=current_user)
+    result = await EmailIngestionService.sync_mailbox(db=db, user=current_user)
     return result
+
 
