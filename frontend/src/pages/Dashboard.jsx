@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { dashboardApi } from '../services/api';
+import { invoiceService } from '../services/invoiceService';
 import {
   FileText,
   CreditCard,
@@ -20,6 +21,8 @@ import {
   DollarSign,
   Activity,
   Calendar,
+  Mail,
+  Loader2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -27,6 +30,8 @@ export const Dashboard = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isSyncingEmail, setIsSyncingEmail] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState('');
   const [stats, setStats] = useState(null);
   const [cashflow, setCashflow] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -34,6 +39,24 @@ export const Dashboard = () => {
   const [topVendors, setTopVendors] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [cashflowMonths, setCashflowMonths] = useState(6);
+
+  const handleSyncEmail = async () => {
+    setIsSyncingEmail(true);
+    setSyncStatusMsg('');
+    try {
+      const res = await invoiceService.fetchFromEmail();
+      if (res.success) {
+        alert(`✅ ${res.message || 'Gmail sync completed!'}`);
+        fetchDashboardData();
+      } else {
+        alert(`⚠️ ${res.message || 'Could not sync from Gmail.'}`);
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error connecting to Gmail. Please verify IMAP settings.');
+    } finally {
+      setIsSyncingEmail(false);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -109,6 +132,19 @@ export const Dashboard = () => {
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-brand-400' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
+          </button>
+          <button
+            onClick={handleSyncEmail}
+            disabled={isSyncingEmail}
+            className="px-3.5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 text-xs font-semibold flex items-center gap-2 transition-all disabled:opacity-50"
+            title="Fetch unread invoice attachments from Gmail"
+          >
+            {isSyncingEmail ? (
+              <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+            ) : (
+              <Mail className="w-4 h-4 text-brand-400" />
+            )}
+            <span>{isSyncingEmail ? 'Syncing Gmail...' : 'Sync from Gmail'}</span>
           </button>
           <Link
             to="/invoices/upload"
