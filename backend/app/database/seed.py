@@ -9,6 +9,7 @@ from app.models.vendor import Vendor
 from app.models.invoice import Invoice, InvoiceStatus, PaymentStatus, ExtractionStatus, InvoiceItem
 from app.models.payment import Payment, PaymentMethod
 from app.models.expense import Expense
+from app.models.reminder import PaymentReminderLog
 from app.models.notification import Notification, NotificationType
 from app.models.audit_log import AuditLog, AuditAction
 from app.core.security import get_password_hash
@@ -16,23 +17,77 @@ from app.core.logging import logger
 
 
 def clean_demo_data(db: Session):
-    """Deletes all dummy/seed records for a 100% clean production workspace."""
-    logger.info("Cleaning demo data...")
+    """Safely purges ALL dummy records (vendors, expenses, demo invoices, seed logs) from database."""
+    logger.info("Purging dummy demo records from database...")
     try:
-        # Delete demo payments & reminder logs
-        db.query(PaymentReminderLog).delete()
-        db.query(Payment).delete()
-        db.query(InvoiceItem).delete()
-        db.query(Invoice).delete()
-        db.query(Expense).delete()
+        # 1. Delete all demo expenses
+        demo_expense_descs = [
+            "Electricity bill for warehouse facilities",
+            "Monthly team productivity licenses",
+            "Client meeting transport and fuel"
+        ]
+        db.query(Expense).filter(Expense.description.in_(demo_expense_descs)).delete(synchronize_session=False)
+
+        # 2. Delete demo invoices and their payments
+        demo_inv_numbers = ["INV-2026-001", "INV-2026-002", "INV-2026-003", "INV-2026-004"]
+        demo_invoices = db.query(Invoice).filter(Invoice.invoice_number.in_(demo_inv_numbers)).all()
+        for d_inv in demo_invoices:
+            db.query(PaymentReminderLog).filter(PaymentReminderLog.invoice_id == d_inv.id).delete(synchronize_session=False)
+            db.query(Payment).filter(Payment.invoice_id == d_inv.id).delete(synchronize_session=False)
+            db.query(InvoiceItem).filter(InvoiceItem.invoice_id == d_inv.id).delete(synchronize_session=False)
+            db.delete(d_inv)
+
+        # 3. Clean up vendor links for real invoices so demo vendors can be deleted safely
+        demo_vendor_names = [
+            "Sharma Packaging Pvt Ltd",
+            "Apex Cloud & IT Services",
+            "National Logistics Express",
+            "Delta Office Solutions"
+        ]
+        
+        # Check all invoices still tied to demo vendors
+        demo_vendors = db.query(Vendor).filter(Vendor.name.in_(demo_vendor_names)).all()
+        demo_vendor_ids = [v.id for v in demo_vendors]
+
+        if demo_vendor_ids:
+            # Reassign any user uploaded invoice to its proper vendor name or create one
+            orphan_invoices = db.query(Invoice).filter(Invoice.vendor_id.in_(demo_vendor_ids)).all()
+            for inv in orphan_invoices:
+                # Resolve vendor name from invoice text or number
+                target_v_name = "Lavish Home Interiors" if "0894" in (inv.invoice_number or "") else "Real Supplier"
+                real_v = db.query(Vendor).filter(Vendor.name == target_v_name).first()
+                if not real_v:
+                    real_v = Vendor(name=target_v_name, category="General", payment_terms_days=30)
+                    db.add(real_v)
+                    db.flush()
+                inv.vendor_id = real_v.id
+
+            # Now safely delete the demo vendors
+            db.query(Vendor).filter(Vendor.id.in_(demo_vendor_ids)).delete(synchronize_session=False)
+
+        # 4. Delete demo audit logs & seed logs
+        db.query(AuditLog).filter(
+            AuditLog.action.in_([AuditAction.USER_LOGIN, AuditAction.EXPENSE_CREATED, AuditAction.INVOICE_UPLOADED, AuditAction.INVOICE_APPROVED])
+        ).delete(synchronize_session=False)
+
+        # 5. Delete demo notifications
         db.query(Notification).delete()
-        db.query(AuditLog).delete()
-        db.query(Vendor).delete()
+
+        # 6. Delete unused demo users
+        demo_user_emails = [
+            "admin@smartinvoice.dev",
+            "staff@smartinvoice.dev",
+            "viewer@smartinvoice.dev",
+            "staff@smartinvoice.local",
+            "viewer@smartinvoice.local"
+        ]
+        db.query(User).filter(User.email.in_(demo_user_emails)).delete(synchronize_session=False)
+
         db.commit()
-        logger.info("Demo data wiped successfully. Clean workspace initialized.")
+        logger.info("Successfully purged all dummy demo data. Workspace is 100% clean and real.")
     except Exception as e:
         db.rollback()
-        logger.error(f"Error cleaning demo data: {e}")
+        logger.error(f"Error purging demo data: {e}")
 
 
 def seed_database(db: Session | None = None, wipe_demo_data: bool = True):

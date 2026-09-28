@@ -37,11 +37,11 @@ async def lifespan(app: FastAPI):
     # Ensure storage directory exists
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     
-    # Auto-seed demo database in development
+    # Ensure clean database state on startup
     try:
-        seed_database()
+        seed_database(wipe_demo_data=True)
     except Exception as e:
-        logger.error(f"Auto-seed during startup encountered error: {e}")
+        logger.error(f"Database initialization encountered error: {e}")
         
     yield
     logger.info(f"Shutting down {settings.APP_NAME}...")

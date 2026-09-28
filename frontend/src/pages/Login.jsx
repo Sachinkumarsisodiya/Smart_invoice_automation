@@ -104,37 +104,7 @@ export const Login = () => {
             </button>
           </form>
 
-          {/* Quick Demo Logins */}
-          <div className="mt-6 pt-6 border-t border-slate-800">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center mb-3">
-              ⚡ Quick Demo Mode Logins
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@smartinvoice.local', 'Password123!')}
-                className="px-2 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold text-center transition-colors"
-              >
-                Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('staff@smartinvoice.local', 'Password123!')}
-                className="px-2 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[11px] font-semibold text-center transition-colors"
-              >
-                Staff
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('viewer@smartinvoice.local', 'Password123!')}
-                className="px-2 py-1.5 rounded-lg bg-slate-700/40 hover:bg-slate-700/60 text-slate-300 border border-slate-600 text-[11px] font-semibold text-center transition-colors"
-              >
-                Viewer
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center border-t border-slate-800 pt-6">
             <p className="text-xs text-slate-400">
               Don't have an account?{' '}
               <Link to="/register" className="font-semibold text-brand-400 hover:text-brand-300">
