@@ -65,7 +65,7 @@ def list_invoices(
 
 @router.post("/upload", response_model=InvoiceUploadResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
-def upload_invoice(
+async def upload_invoice(
     request: Request,
     file: UploadFile = File(...),
     vendor_id: Optional[uuid.UUID] = Form(None),
@@ -80,19 +80,33 @@ def upload_invoice(
         request=request
     )
 
-    text_snippet = extraction_data.get("text", "")[:300]
-    if len(extraction_data.get("text", "")) > 300:
+    # Immediately execute extraction pipeline (OCR/Vision AI -> Validation -> Vendor Matching)
+    try:
+        invoice = await ExtractionService.process_invoice_extraction(
+            db=db,
+            invoice_id=invoice.id,
+            current_user=current_user,
+            request=request
+        )
+    except Exception as ext_err:
+        logger.warning(f"Auto-extraction during invoice upload encountered issue: {ext_err}")
+
+    raw_data = invoice.raw_extracted_data if isinstance(invoice.raw_extracted_data, dict) else extraction_data
+    raw_text = raw_data.get("text", "") if isinstance(raw_data, dict) else ""
+    text_snippet = raw_text[:300]
+    if len(raw_text) > 300:
         text_snippet += "..."
 
     return InvoiceUploadResponse(
         invoice=InvoiceDetailResponse.model_validate(invoice),
         extracted_text_snippet=text_snippet,
-        char_count=extraction_data.get("char_count", 0),
-        page_count=extraction_data.get("page_count", 1),
-        is_digital=extraction_data.get("is_digital", False),
-        needs_ocr=extraction_data.get("needs_ocr", False),
-        message="Invoice uploaded and text extracted successfully."
+        char_count=len(raw_text),
+        page_count=extraction_data.get("page_count", 1) if isinstance(extraction_data, dict) else 1,
+        is_digital=True,
+        needs_ocr=False,
+        message="Invoice uploaded and processed successfully."
     )
+
 
 
 @router.get("/{id}", response_model=InvoiceDetailResponse)
