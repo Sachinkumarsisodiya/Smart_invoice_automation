@@ -3,11 +3,37 @@ import json
 import re
 import base64
 from decimal import Decimal
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import httpx
 from app.config import settings
 from app.core.logging import logger
 from app.ai.provider import BaseAIProvider, ExtractedInvoiceSchema, ExtractedItemSchema
+
+
+def clean_json_response(raw_text: str) -> Dict[str, Any]:
+    """Robustly extracts and parses JSON from LLM responses even if wrapped in markdown or partial text."""
+    text = (raw_text or "").strip()
+    if not text:
+        return {}
+
+    # Strip markdown code blocks
+    if "```" in text:
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.DOTALL)
+        if match:
+            text = match.group(1).strip()
+
+    try:
+        return json.loads(text)
+    except Exception:
+        # Try extracting innermost or outermost JSON object
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(text[start:end+1])
+            except Exception as e:
+                logger.warning(f"[clean_json_response] Slice parse failed: {e}")
+    return {}
 
 
 class RealAIProvider(BaseAIProvider):
@@ -16,14 +42,21 @@ class RealAIProvider(BaseAIProvider):
     """
 
     def __init__(self, api_key: str = "", model_name: str = ""):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or settings.AI_API_KEY
+        self.api_key = (
+            api_key
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+            or os.getenv("AI_API_KEY")
+            or settings.AI_API_KEY
+            or ""
+        ).strip()
         self.model_name = model_name or settings.AI_MODEL_NAME or "gemini-1.5-flash"
 
     async def extract_invoice(self, text_content: str, metadata: Optional[Dict[str, Any]] = None) -> ExtractedInvoiceSchema:
         logger.info(f"[RealAIProvider] Invoking LLM text extraction with model '{self.model_name}'...")
 
         if not self.api_key:
-            raise ValueError("AI API key is not configured. Please set GEMINI_API_KEY or AI_API_KEY in environment.")
+            raise ValueError("AI API key is not configured. Set GEMINI_API_KEY or AI_API_KEY.")
 
         system_instruction = self._get_system_prompt()
         parsed_json: Dict[str, Any] = {}
@@ -31,28 +64,43 @@ class RealAIProvider(BaseAIProvider):
         is_gemini = self.api_key.startswith("AIza") or "gemini" in self.model_name.lower()
 
         if is_gemini:
-            gemini_model = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={self.api_key}"
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": f"{system_instruction}\n\nDOCUMENT TEXT TO PARSE:\n{text_content[:15000]}"}
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.0,
-                    "responseMimeType": "application/json"
-                }
-            }
+            candidate_models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+            if "gemini" in self.model_name and self.model_name not in candidate_models:
+                candidate_models.insert(0, self.model_name)
 
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                res = await client.post(url, json=payload)
-                res.raise_for_status()
-                res_data = res.json()
-                raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                parsed_json = json.loads(raw_text)
+            last_err = None
+            for model in candidate_models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": f"{system_instruction}\n\nDOCUMENT TEXT TO PARSE:\n{text_content[:15000]}"}
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.0,
+                        "responseMimeType": "application/json"
+                    }
+                }
+
+                try:
+                    async with httpx.AsyncClient(timeout=45.0) as client:
+                        res = await client.post(url, json=payload)
+                        res.raise_for_status()
+                        res_data = res.json()
+                        raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                        parsed_json = clean_json_response(raw_text)
+                        if parsed_json:
+                            logger.info(f"[RealAIProvider] Text extraction succeeded with model '{model}'")
+                            break
+                except Exception as model_err:
+                    last_err = model_err
+                    logger.warning(f"[RealAIProvider] Gemini model '{model}' failed: {model_err}")
+
+            if not parsed_json and last_err:
+                raise last_err
 
         else:
             headers = {
@@ -74,7 +122,7 @@ class RealAIProvider(BaseAIProvider):
                 res.raise_for_status()
                 res_data = res.json()
                 raw_content = res_data["choices"][0]["message"]["content"]
-                parsed_json = json.loads(raw_content)
+                parsed_json = clean_json_response(raw_content)
 
         return self._build_schema_response(parsed_json)
 
@@ -94,34 +142,49 @@ class RealAIProvider(BaseAIProvider):
         is_gemini = self.api_key.startswith("AIza") or "gemini" in self.model_name.lower()
 
         if is_gemini:
-            gemini_model = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={self.api_key}"
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": f"{system_instruction}\n\nParse this invoice image and return exact structured JSON:"},
-                            {
-                                "inline_data": {
-                                    "mime_type": mime_type,
-                                    "data": b64_data
-                                }
-                            }
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.0,
-                    "responseMimeType": "application/json"
-                }
-            }
+            candidate_models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+            if "gemini" in self.model_name and self.model_name not in candidate_models:
+                candidate_models.insert(0, self.model_name)
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                res = await client.post(url, json=payload)
-                res.raise_for_status()
-                res_data = res.json()
-                raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                parsed_json = json.loads(raw_text)
+            last_err = None
+            for model in candidate_models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": f"{system_instruction}\n\nParse this invoice image and return exact structured JSON matching the schema:"},
+                                {
+                                    "inline_data": {
+                                        "mime_type": mime_type,
+                                        "data": b64_data
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.0,
+                        "responseMimeType": "application/json"
+                    }
+                }
+
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        res = await client.post(url, json=payload)
+                        res.raise_for_status()
+                        res_data = res.json()
+                        raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                        parsed_json = clean_json_response(raw_text)
+                        if parsed_json:
+                            logger.info(f"[RealAIProvider] Vision extraction succeeded with model '{model}'")
+                            break
+                except Exception as model_err:
+                    last_err = model_err
+                    logger.warning(f"[RealAIProvider] Gemini Vision model '{model}' attempt failed: {model_err}")
+
+            if not parsed_json and last_err:
+                raise last_err
 
         else:
             headers = {
@@ -154,7 +217,7 @@ class RealAIProvider(BaseAIProvider):
                 res.raise_for_status()
                 res_data = res.json()
                 raw_content = res_data["choices"][0]["message"]["content"]
-                parsed_json = json.loads(raw_content)
+                parsed_json = clean_json_response(raw_content)
 
         return self._build_schema_response(parsed_json)
 
@@ -168,7 +231,7 @@ class RealAIProvider(BaseAIProvider):
             "3. Distinguish between Seller (vendor) and Buyer (client/customer).\n"
             "4. Return ONLY a valid JSON object matching this schema:\n"
             "{\n"
-            '  "vendor_name": "string (seller name)",\n'
+            '  "vendor_name": "string (seller/company name)",\n'
             '  "vendor_gstin": "string or null",\n'
             '  "vendor_email": "string or null",\n'
             '  "invoice_number": "string (exact invoice #)",\n'
@@ -204,6 +267,13 @@ class RealAIProvider(BaseAIProvider):
         total = Decimal(str(parsed_json.get("total_amount", 0)))
         subtotal = Decimal(str(parsed_json.get("subtotal", 0)))
         tax = Decimal(str(parsed_json.get("tax_amount", 0)))
+
+        # Mathematical reconciliation if subtotal + tax ~ total
+        if total > 0 and subtotal == 0 and tax > 0:
+            subtotal = total - tax
+        elif total > 0 and subtotal > 0 and tax == 0:
+            tax = total - subtotal
+
         confidence = Decimal(str(parsed_json.get("confidence_score", 95.0))) if total > 0 else Decimal("0.00")
 
         return ExtractedInvoiceSchema(
@@ -222,3 +292,4 @@ class RealAIProvider(BaseAIProvider):
             raw_response=parsed_json,
             is_mock=False
         )
+
