@@ -11,6 +11,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     Production-grade security headers middleware enforcing defensive HTTP headers.
     """
     async def dispatch(self, request: Request, call_next) -> Response:
+        if request.method == "OPTIONS":
+            return await call_next(request)
         response = await call_next(request)
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
