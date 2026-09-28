@@ -58,7 +58,7 @@ export const Vendors = () => {
       setTotalCount(res.data.total || 0);
     } catch (err) {
       console.error('Failed to load vendors:', err);
-      setError('Unable to load vendors. Please check backend connection.');
+      setError(err.response?.data?.error?.message || err.response?.data?.message || 'Unable to load vendors. Please check backend connection.');
     } finally {
       setLoading(false);
     }
@@ -258,9 +258,17 @@ export const Vendors = () => {
           </div>
         </div>
       ) : error ? (
-        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-xl text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-xl text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={fetchVendors}
+            className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg transition"
+          >
+            Retry
+          </button>
         </div>
       ) : vendors.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">

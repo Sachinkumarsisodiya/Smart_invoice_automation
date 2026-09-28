@@ -2,12 +2,12 @@ import uuid
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class VendorBase(BaseModel):
-    name: str = Field(..., min_length=2, max_length=255)
-    email: Optional[EmailStr] = None
+    name: str = Field(..., min_length=1, max_length=255)
+    email: Optional[str] = None
     phone: Optional[str] = Field(None, max_length=50)
     gstin: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = None
@@ -21,8 +21,8 @@ class VendorCreate(VendorBase):
 
 
 class VendorUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=2, max_length=255)
-    email: Optional[EmailStr] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    email: Optional[str] = None
     phone: Optional[str] = Field(None, max_length=50)
     gstin: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = None
@@ -33,8 +33,8 @@ class VendorUpdate(BaseModel):
 
 class VendorResponse(VendorBase):
     id: uuid.UUID
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   FileText,
   Plus,
@@ -21,16 +21,25 @@ import { StatusBadge } from '../components/common/StatusBadge';
 
 export const Invoices = () => {
   const { hasRole } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [invoices, setInvoices] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [pageSize] = useState(10);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Sync state if URL query changes
+  useEffect(() => {
+    const urlStatus = searchParams.get('status') || '';
+    if (urlStatus !== statusFilter) {
+      setStatusFilter(urlStatus);
+    }
+  }, [searchParams]);
 
   const [isSyncingEmail, setIsSyncingEmail] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');

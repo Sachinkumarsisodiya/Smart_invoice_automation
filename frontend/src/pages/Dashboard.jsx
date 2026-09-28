@@ -166,27 +166,35 @@ export const Dashboard = () => {
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Invoiced */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
+        <Link 
+          to="/invoices"
+          className="group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer block"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Invoiced</span>
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-blue-600 transition-colors">Total Invoiced</span>
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 group-hover:bg-blue-600 group-hover:text-white transition-all">
               <FileText className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">
+          <p className="text-2xl font-black text-slate-900 mt-2 group-hover:text-blue-600 transition-colors">
             {formatCurrency(stats?.total_invoiced_amount)}
           </p>
           <div className="flex items-center justify-between text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
             <span>{stats?.total_invoices_count || 0} active invoices</span>
-            <span className="font-semibold text-blue-600">AP Ledger</span>
+            <span className="font-semibold text-blue-600 flex items-center gap-0.5">
+              AP Ledger <ArrowUpRight className="w-3.5 h-3.5" />
+            </span>
           </div>
-        </div>
+        </Link>
 
         {/* Total Settled / Paid */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
+        <Link 
+          to="/payments"
+          className="group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-emerald-300 transition-all cursor-pointer block"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Settled</span>
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-emerald-600 transition-colors">Total Settled</span>
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 group-hover:bg-emerald-600 group-hover:text-white transition-all">
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
@@ -195,15 +203,20 @@ export const Dashboard = () => {
           </p>
           <div className="flex items-center justify-between text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
             <span>{stats?.total_settled_transactions || 0} payment records</span>
-            <span className="font-semibold text-emerald-600">Disbursed</span>
+            <span className="font-semibold text-emerald-600 flex items-center gap-0.5">
+              Disbursed <ArrowUpRight className="w-3.5 h-3.5" />
+            </span>
           </div>
-        </div>
+        </Link>
 
         {/* Total Outstanding / Pending */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
+        <Link 
+          to="/invoices?status=PENDING_REVIEW"
+          className="group bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:border-amber-300 transition-all cursor-pointer block"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Outstanding Balance</span>
-            <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 group-hover:text-amber-600 transition-colors">Outstanding Balance</span>
+            <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 group-hover:bg-amber-600 group-hover:text-white transition-all">
               <Clock className="w-5 h-5" />
             </div>
           </div>
@@ -212,15 +225,20 @@ export const Dashboard = () => {
           </p>
           <div className="flex items-center justify-between text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
             <span>Pending settlement</span>
-            <span className="font-semibold text-amber-600">Liabilities</span>
+            <span className="font-semibold text-amber-600 flex items-center gap-0.5">
+              Liabilities <ArrowUpRight className="w-3.5 h-3.5" />
+            </span>
           </div>
-        </div>
+        </Link>
 
-        {/* Overdue Risk */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
+        {/* Overdue Risk - Direct Clickable to Overdue Invoices */}
+        <Link 
+          to="/invoices?status=OVERDUE"
+          className="group bg-white p-5 rounded-2xl border border-rose-200/80 shadow-sm hover:shadow-lg hover:border-rose-400 transition-all cursor-pointer block ring-1 ring-rose-100"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Overdue Invoices</span>
-            <div className="p-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100">
+            <span className="text-xs font-semibold uppercase tracking-wider text-rose-700 group-hover:text-rose-600 transition-colors">Overdue Invoices</span>
+            <div className="p-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 group-hover:bg-rose-600 group-hover:text-white transition-all">
               <AlertTriangle className="w-5 h-5" />
             </div>
           </div>
@@ -229,9 +247,11 @@ export const Dashboard = () => {
           </p>
           <div className="flex items-center justify-between text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
             <span className="text-rose-600 font-semibold">{stats?.overdue_invoices_count || 0} overdue</span>
-            <span className="font-semibold text-rose-600">Action Needed</span>
+            <span className="font-bold text-rose-600 flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+              Pay Now <ArrowUpRight className="w-3.5 h-3.5" />
+            </span>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Secondary Quick Metrics Row */}
