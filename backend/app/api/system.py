@@ -93,3 +93,17 @@ def trigger_reminder_scan(
         "message": "Payment reminders scan executed successfully.",
         "details": result
     }
+
+
+@router.post("/clean-database")
+def clean_database_endpoint(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+) -> Dict[str, Any]:
+    """Wipes all dummy invoices, expenses, vendors and payments, keeping only real admin user."""
+    from app.database.seed import clean_demo_data
+    clean_demo_data(db)
+    return {
+        "status": "success",
+        "message": "All demo invoices, expenses, vendors, and payments wiped. Clean workspace active."
+    }
