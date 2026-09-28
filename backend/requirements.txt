@@ -18,5 +18,6 @@ httpx>=0.27.0
 pytest>=8.1.1
 slowapi>=0.1.10
 psycopg2-binary>=2.9.9
+psycopg[binary]>=3.1.18
 rapidocr-onnxruntime>=1.2.3
 pytesseract>=0.3.10
