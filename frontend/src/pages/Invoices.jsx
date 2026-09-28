@@ -259,10 +259,22 @@ export const Invoices = () => {
                     <td className="px-5 py-3.5 text-slate-500">{inv.invoice_date}</td>
                     <td className="px-5 py-3.5 text-slate-500">{inv.due_date}</td>
                     <td className="px-5 py-3.5 text-right font-bold text-slate-900">
-                      {formatCurrency(inv.total_amount, inv.currency)}
+                      {parseFloat(inv.total_amount || 0) <= 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                          ⚠️ Needs Review (₹0.00)
+                        </span>
+                      ) : (
+                        formatCurrency(inv.total_amount, inv.currency)
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-center">
-                      <StatusBadge status={inv.status} />
+                      {inv.extraction_status === 'FAILED' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
+                          NEEDS VERIFICATION
+                        </span>
+                      ) : (
+                        <StatusBadge status={inv.status} />
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-center">
                       <StatusBadge status={inv.payment_status} />

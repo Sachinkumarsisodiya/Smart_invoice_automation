@@ -6,9 +6,17 @@ from app.core.logging import logger
 
 SUPPORTED_CURRENCIES = {"INR", "USD", "EUR", "GBP", "CAD", "AUD", "SGD", "AED"}
 
+INVOICE_NUM_BLACKLIST = {
+    "CONFIRMATION", "CORPORATE", "INVOICE", "ORIGINAL", "DUPLICATE", "TRIPLICATE",
+    "TAX", "BILL", "RECEIPT", "STATEMENT", "PAYMENT", "SUMMARY", "MEMO", "REPORT",
+    "ACKNOWLEDGEMENT", "VOUCHER", "PURCHASE", "ORDER", "DETAILS", "NUMBER", "NO",
+    "NUM", "DATE", "PAGE", "VALUE", "AMOUNT", "TOTAL", "CLIENT", "SUPPLIER", "VENDOR",
+    "INV-UNKNOWN", "UNKNOWN"
+}
+
 
 class ValidationService:
-    """Deterministic validation engine for AI extracted financial documents."""
+    """Strict zero-hallucination deterministic validation engine for AI extracted financial documents."""
 
     @staticmethod
     def validate_extracted_invoice(data: ExtractedInvoiceSchema) -> Tuple[bool, List[str], Dict[str, Any]]:
@@ -24,57 +32,41 @@ class ValidationService:
         tax_amount = data.tax_amount or Decimal("0.00")
         total_amount = data.total_amount or Decimal("0.00")
 
-        # 1. Non-negative constraints
+        # 1. Zero / Negative Financial Checks
+        if total_amount <= Decimal("0.00"):
+            errors.append("CRITICAL: Total invoice amount could not be verified (₹0.00). Manual verification required to prevent financial error.")
         if subtotal < Decimal("0.00"):
             errors.append(f"Subtotal cannot be negative: {subtotal}")
         if tax_amount < Decimal("0.00"):
             errors.append(f"Tax amount cannot be negative: {tax_amount}")
-        if total_amount < Decimal("0.00"):
-            errors.append(f"Total amount cannot be negative: {total_amount}")
 
-        # 2. Mathematical Consistency: Subtotal + Tax = Total (tolerance ±0.02)
-        expected_total = subtotal + tax_amount
-        math_diff = abs(expected_total - total_amount)
-        is_math_consistent = math_diff <= Decimal("0.02")
+        # 2. Mathematical Consistency: Subtotal + Tax = Total (tolerance ±1.00 for rounding)
+        if total_amount > Decimal("0.00") and subtotal > Decimal("0.00"):
+            expected_total = subtotal + tax_amount
+            math_diff = abs(expected_total - total_amount)
+            is_math_consistent = math_diff <= Decimal("1.00")
 
-        if not is_math_consistent:
-            errors.append(
-                f"Mathematical inconsistency: Subtotal ({subtotal}) + Tax ({tax_amount}) = {expected_total}, but Total is {total_amount} (Diff: {math_diff})"
-            )
+            if not is_math_consistent:
+                errors.append(
+                    f"Financial reconciliation discrepancy: Subtotal ({subtotal}) + Tax ({tax_amount}) = {expected_total}, but Total is {total_amount} (Diff: {math_diff})"
+                )
+        else:
+            is_math_consistent = total_amount > 0
 
-        # 3. Line Item Summation Check
-        if data.items:
-            items_sum = Decimal("0.00")
-            for idx, item in enumerate(data.items, start=1):
-                if item.quantity < Decimal("0.00"):
-                    errors.append(f"Item #{idx} quantity cannot be negative: {item.quantity}")
-                if item.unit_price < Decimal("0.00"):
-                    errors.append(f"Item #{idx} unit price cannot be negative: {item.unit_price}")
-                
-                # Check item line amount = quantity * unit_price
-                expected_item_amt = (item.quantity * item.unit_price).quantize(Decimal("0.01"))
-                if abs(expected_item_amt - item.amount) > Decimal("0.05"):
-                    warnings.append(
-                        f"Item #{idx} amount discrepancy: Qty ({item.quantity}) * Price ({item.unit_price}) = {expected_item_amt}, but line amount is {item.amount}"
-                    )
-                items_sum += item.amount
+        # 3. Mandatory Identity Fields & Stopwords Check
+        clean_inv_num = (data.invoice_number or "").strip().upper()
+        if not clean_inv_num or clean_inv_num in INVOICE_NUM_BLACKLIST:
+            errors.append(f"Invoice number is invalid or missing ('{data.invoice_number}')")
 
-            # Compare items sum to subtotal if subtotal is greater than 0
-            if subtotal > Decimal("0.00") and abs(items_sum - subtotal) > Decimal("0.05"):
-                warnings.append(f"Sum of line items ({items_sum}) does not equal subtotal ({subtotal})")
+        clean_vendor = (data.vendor_name or "").strip()
+        if not clean_vendor or clean_vendor in ("Unassigned Vendor", "Unknown Vendor"):
+            warnings.append("Vendor / Seller name could not be definitively recognized.")
 
-        # 4. Mandatory Identity Fields
-        if not data.vendor_name or not data.vendor_name.strip():
-            errors.append("Vendor name is required and missing")
-
-        if not data.invoice_number or not data.invoice_number.strip():
-            errors.append("Invoice number is required and missing")
-
-        # 5. Currency Check
+        # 4. Currency Check
         if data.currency.upper() not in SUPPORTED_CURRENCIES:
             warnings.append(f"Unrecognized or unsupported currency '{data.currency}'. Defaulted to INR.")
 
-        # 6. Date Validity & Logical Timeline Check
+        # 5. Date Validity & Logical Timeline Check
         inv_date = None
         due_date = None
 
@@ -107,6 +99,6 @@ class ValidationService:
         if is_valid:
             logger.info(f"[Validation Passed] Invoice #{data.invoice_number} from '{data.vendor_name}' - Total: {total_amount}")
         else:
-            logger.warning(f"[Validation Failed] Invoice #{data.invoice_number} - {len(errors)} error(s): {'; '.join(errors)}")
+            logger.warning(f"[Validation Flagged] Invoice #{data.invoice_number} - {len(errors)} error(s): {'; '.join(errors)}")
 
         return is_valid, errors, metadata

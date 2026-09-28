@@ -177,14 +177,15 @@ class EmailIngestionService:
                                             current_user=target_user
                                         )
                                     )
-                                    confidence = getattr(extracted_invoice, 'confidence_score', 85) or 85
+                                    confidence = getattr(extracted_invoice, 'extraction_confidence', 0) or 0
+                                    is_flagged = extracted_invoice.extraction_status in ("FAILED", "MANUAL") or extracted_invoice.total_amount <= Decimal("0.00")
 
                                     # 3. Create Notification
                                     notif = Notification(
                                         user_id=target_user.id,
-                                        title="New Invoice Ingested from Email",
-                                        message=f"Invoice #{extracted_invoice.invoice_number} received from '{sender}' (Subject: {subject[:50]}). Extracted with confidence {confidence}%.",
-                                        type=NotificationType.SUCCESS,
+                                        title="⚠️ Invoice Flagged for Manual Review" if is_flagged else "New Verified Invoice Ingested",
+                                        message=f"Invoice #{extracted_invoice.invoice_number} from '{sender}' could not be fully verified automatically (Total: ₹{extracted_invoice.total_amount}). Marked for safety review." if is_flagged else f"Invoice #{extracted_invoice.invoice_number} received from '{sender}' (Total: ₹{extracted_invoice.total_amount}). Extracted with confidence {confidence}%.",
+                                        type=NotificationType.WARNING if is_flagged else NotificationType.SUCCESS,
                                         is_read=False
                                     )
                                     db.add(notif)

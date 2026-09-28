@@ -114,8 +114,15 @@ class ExtractionService:
         invoice.remaining_amount = max(Decimal("0.00"), extracted_data.total_amount - invoice.paid_amount)
         invoice.currency = extracted_data.currency
         invoice.extraction_confidence = extracted_data.confidence_score
-        invoice.extraction_status = ExtractionStatus.SUCCESS if is_valid else ExtractionStatus.MANUAL
-        invoice.status = InvoiceStatus.PENDING_REVIEW  # All AI extractions require review / approval
+        
+        if not is_valid or extracted_data.total_amount <= Decimal("0.00"):
+            invoice.extraction_status = ExtractionStatus.FAILED if extracted_data.total_amount <= Decimal("0.00") else ExtractionStatus.MANUAL
+            invoice.status = InvoiceStatus.PENDING_REVIEW
+            invoice.notes = f"⚠️ Financial Safety Flag: {'; '.join(validation_errors)}"
+        else:
+            invoice.extraction_status = ExtractionStatus.SUCCESS
+            invoice.status = InvoiceStatus.PENDING_REVIEW
+            
         invoice.raw_extracted_data = {
             "text": raw_text,
             "ai_extracted": extracted_data.model_dump(mode="json"),
