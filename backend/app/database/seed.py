@@ -111,7 +111,7 @@ def seed_database(db: Session | None = None, wipe_demo_data: bool = True):
         demo_users = [
             {
                 "email": "sachinsisodiyaofc@gmail.com",
-                "password": "Password123!",
+                "password": "@Sisodiya0506$",
                 "full_name": "Sachin Sisodiya",
                 "role": UserRole.ADMIN
             },
@@ -136,6 +136,12 @@ def seed_database(db: Session | None = None, wipe_demo_data: bool = True):
                 db.add(existing)
                 db.flush()
                 logger.info(f"Initialized Admin user: {u['email']}")
+            else:
+                existing.hashed_password = get_password_hash(u["password"])
+                existing.is_active = True
+                existing.role = u["role"]
+                db.flush()
+                logger.info(f"Updated password hash for Admin: {u['email']}")
 
         db.commit()
         logger.info("Fresh database initialized with 0 dummy records.")
