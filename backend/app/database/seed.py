@@ -32,7 +32,8 @@ def clean_demo_data(db: Session):
         demo_inv_numbers = ["INV-2026-001", "INV-2026-002", "INV-2026-003", "INV-2026-004", "CONFIRMATION", "CORPORATE", "INV-UNKNOWN"]
         false_invoices = db.query(Invoice).filter(
             (Invoice.invoice_number.in_(demo_inv_numbers)) |
-            (Invoice.total_amount == Decimal("0.00"))
+            (Invoice.total_amount == Decimal("0.00")) |
+            (Invoice.tax_amount == Decimal("1.00"))
         ).all()
         for d_inv in false_invoices:
             db.query(PaymentReminderLog).filter(PaymentReminderLog.invoice_id == d_inv.id).delete(synchronize_session=False)
