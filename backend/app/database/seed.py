@@ -28,11 +28,11 @@ def clean_demo_data(db: Session):
         ]
         db.query(Expense).filter(Expense.description.in_(demo_expense_descs)).delete(synchronize_session=False)
 
-        # 2. Delete demo invoices and false 300,000.00 placeholder extractions
-        demo_inv_numbers = ["INV-2026-001", "INV-2026-002", "INV-2026-003", "INV-2026-004", "CONFIRMATION", "CORPORATE"]
+        # 2. Delete demo invoices, zero-amount failed extractions, and placeholder numbers
+        demo_inv_numbers = ["INV-2026-001", "INV-2026-002", "INV-2026-003", "INV-2026-004", "CONFIRMATION", "CORPORATE", "INV-UNKNOWN"]
         false_invoices = db.query(Invoice).filter(
             (Invoice.invoice_number.in_(demo_inv_numbers)) |
-            (Invoice.total_amount == Decimal("300000.00"))
+            (Invoice.total_amount == Decimal("0.00"))
         ).all()
         for d_inv in false_invoices:
             db.query(PaymentReminderLog).filter(PaymentReminderLog.invoice_id == d_inv.id).delete(synchronize_session=False)
