@@ -57,6 +57,8 @@ class InvoiceService:
 
         # 5. Extract text from document
         extraction_data = DocumentExtractor.extract_text(saved_filepath, ext)
+        import base64
+        extraction_data["b64_document"] = base64.b64encode(content).decode("utf-8")
 
         # 6. Assign or resolve vendor
         target_vendor = None

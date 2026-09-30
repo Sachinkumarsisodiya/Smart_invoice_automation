@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime, date
 from decimal import Decimal
@@ -36,7 +37,21 @@ class ExtractionService:
 
         logger.info(f"Starting extraction pipeline for invoice #{invoice.invoice_number} (ID: {invoice.id})")
 
-        # 1. Check if OCR is required
+        # 0. Restore document file if missing from disk (e.g. Render ephemeral restart)
+        if not os.path.exists(invoice.document_path):
+            if invoice.raw_extracted_data and isinstance(invoice.raw_extracted_data, dict):
+                b64_doc = invoice.raw_extracted_data.get("b64_document")
+                if b64_doc:
+                    try:
+                        import base64
+                        doc_bytes = base64.b64decode(b64_doc)
+                        os.makedirs(os.path.dirname(invoice.document_path), exist_ok=True)
+                        with open(invoice.document_path, "wb") as f:
+                            f.write(doc_bytes)
+                        logger.info(f"Restored ephemeral document file on disk for invoice {invoice.id}")
+                    except Exception as restore_err:
+                        logger.warning(f"Failed to restore ephemeral file: {restore_err}")
+
         # 1. Determine if document is an image or PDF
         doc_ext = invoice.document_path.split(".")[-1].lower()
         is_image = doc_ext in ("png", "jpg", "jpeg", "webp", "bmp", "tiff")

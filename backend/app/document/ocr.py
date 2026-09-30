@@ -85,13 +85,32 @@ class OCREngine:
                     if PYTESSERACT_AVAILABLE:
                         try:
                             import shutil
-                            tess_bin = shutil.which("tesseract") or "/usr/bin/tesseract"
-                            if os.path.exists(tess_bin):
+                            tess_candidates = [
+                                shutil.which("tesseract"),
+                                "/usr/bin/tesseract",
+                                "/usr/local/bin/tesseract",
+                                r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                                r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+                                os.path.expanduser(r"~\AppData\Local\Programs\Tesseract-OCR\tesseract.exe")
+                            ]
+                            tess_bin = None
+                            for cand in tess_candidates:
+                                if cand and os.path.exists(cand):
+                                    tess_bin = cand
+                                    break
+                            
+                            if tess_bin:
                                 pytesseract.pytesseract.tesseract_cmd = tess_bin
 
+                            from PIL import ImageEnhance, ImageOps
                             with Image.open(temp_ocr_path) as ocr_img:
-                                tess_text = pytesseract.image_to_string(ocr_img).strip()
-                                if tess_text and len(tess_text) > 15:
+                                # Preprocess for high contrast OCR
+                                prep_img = ImageOps.autocontrast(ocr_img.convert("L"))
+                                tess_text = pytesseract.image_to_string(prep_img).strip()
+                                if not tess_text or len(tess_text) < 5:
+                                    tess_text = pytesseract.image_to_string(ocr_img).strip()
+
+                                if tess_text and len(tess_text) >= 5:
                                     result["text"] = tess_text
                                     result["success"] = True
                                     result["engine"] = "pytesseract"

@@ -155,8 +155,8 @@ class RealAIProvider(BaseAIProvider):
                             "parts": [
                                 {"text": f"{system_instruction}\n\nParse this financial invoice image and return exact structured JSON matching the schema:"},
                                 {
-                                    "inline_data": {
-                                        "mime_type": mime_type,
+                                    "inlineData": {
+                                        "mimeType": mime_type,
                                         "data": b64_data
                                     }
                                 }

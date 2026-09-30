@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
+from app.core.logging import logger
 from app.api.deps import get_current_user, require_staff_or_admin, require_admin
 from app.models.user import User
 from app.schemas.invoice import (
@@ -239,6 +240,26 @@ def get_invoice_document(
     """Secure document streaming for authorized users."""
     invoice = InvoiceService.get_invoice(db, id)
     file_path = invoice.document_path
+
+    if not file_path or not os.path.exists(file_path):
+        if invoice.raw_extracted_data and isinstance(invoice.raw_extracted_data, dict):
+            b64_doc = invoice.raw_extracted_data.get("b64_document")
+            if b64_doc:
+                try:
+                    import base64
+                    from fastapi import Response
+                    doc_bytes = base64.b64decode(b64_doc)
+                    if file_path:
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                        with open(file_path, "wb") as f:
+                            f.write(doc_bytes)
+                        logger.info(f"Restored ephemeral file on disk for document stream: {file_path}")
+                    else:
+                        ext = "pdf"
+                        media_type = "application/pdf"
+                        return Response(content=doc_bytes, media_type=media_type)
+                except Exception as restore_err:
+                    logger.warning(f"Failed to restore ephemeral document from b64: {restore_err}")
 
     if not file_path or not os.path.exists(file_path):
         raise NotFoundException("Physical document file not found on disk")
