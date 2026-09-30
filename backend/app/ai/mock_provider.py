@@ -227,14 +227,15 @@ class MockAIProvider(BaseAIProvider):
         # -------------------------------------------------------------
         subtotal = sum((it.amount for it in items), Decimal("0.00"))
 
-        if subtotal == Decimal("0.00"):
-            taxable_lines = re.findall(
-                r"(?:taxable(?:\s*value|\s*amount)?|sub\s*total(?:\s*\([^)]*\))?|subtotal|basic\s*amount)\s*[:.]?[\s\S]{0,25}?(?:₹|Rs\.?|INR|USD|\$|EUR|€|GBP|£)?\s*([0-9,]+(?:\.[0-9]{2}))",
-                text,
-                re.IGNORECASE
-            )
-            if taxable_lines:
-                subtotal = sum((Decimal(t.replace(",", "")) for t in taxable_lines), Decimal("0.00"))
+        taxable_lines = re.findall(
+            r"(?:taxable(?:\s*services|\s*value|\s*amount)?|sub\s*total(?:\s*\([^)]*\))?|subtotal|basic\s*amount)\s*[:.]?[\s\S]{0,25}?(?:₹|Rs\.?|INR|USD|\$|EUR|€|GBP|£)?\s*([0-9,]+(?:\.[0-9]{2}))",
+            text,
+            re.IGNORECASE
+        )
+        if taxable_lines:
+            found_sub = sum((Decimal(t.replace(",", "")) for t in taxable_lines), Decimal("0.00"))
+            if found_sub > subtotal or subtotal == Decimal("0.00"):
+                subtotal = found_sub
 
         tax_amount = Decimal("0.00")
         cgst_m = re.search(r"cgst[\s\S]{0,25}?(?:₹|Rs\.?|INR)?\s*([0-9,]+(?:\.[0-9]{2}))", text, re.IGNORECASE)
