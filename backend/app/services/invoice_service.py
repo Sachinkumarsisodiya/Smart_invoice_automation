@@ -142,11 +142,26 @@ class InvoiceService:
     ):
         today = date.today()
 
-        # Inline auto-transition: Mark any unpaid invoice past its due date as OVERDUE
+        # Inline auto-transition & cleanup:
         try:
+            # 1. Any fully settled invoice MUST have status = PAID & payment_status = PAID
+            db.query(Invoice).filter(
+                or_(
+                    Invoice.remaining_amount <= Decimal("0.00"),
+                    Invoice.payment_status == PaymentStatus.PAID
+                ),
+                Invoice.status != InvoiceStatus.PAID,
+                Invoice.total_amount > Decimal("0.00")
+            ).update(
+                {Invoice.status: InvoiceStatus.PAID, Invoice.payment_status: PaymentStatus.PAID},
+                synchronize_session=False
+            )
+
+            # 2. Any unpaid active invoice past due date MUST have status = OVERDUE & payment_status = OVERDUE
             db.query(Invoice).filter(
                 Invoice.due_date < today,
                 Invoice.remaining_amount > Decimal("0.00"),
+                Invoice.payment_status != PaymentStatus.PAID,
                 Invoice.status.not_in([InvoiceStatus.PAID, InvoiceStatus.REJECTED, InvoiceStatus.OVERDUE])
             ).update(
                 {Invoice.status: InvoiceStatus.OVERDUE, Invoice.payment_status: PaymentStatus.OVERDUE},
@@ -163,14 +178,13 @@ class InvoiceService:
             st_upper = status.upper()
             if st_upper == "OVERDUE":
                 query = query.filter(
+                    Invoice.remaining_amount > Decimal("0.00"),
+                    Invoice.payment_status != PaymentStatus.PAID,
+                    Invoice.status != InvoiceStatus.REJECTED,
                     or_(
                         Invoice.status == InvoiceStatus.OVERDUE,
                         Invoice.payment_status == PaymentStatus.OVERDUE,
-                        and_(
-                            Invoice.due_date < today,
-                            Invoice.remaining_amount > Decimal("0.00"),
-                            Invoice.status != InvoiceStatus.REJECTED
-                        )
+                        Invoice.due_date < today
                     )
                 )
             else:
@@ -180,13 +194,12 @@ class InvoiceService:
             pst_upper = payment_status.upper()
             if pst_upper == "OVERDUE":
                 query = query.filter(
+                    Invoice.remaining_amount > Decimal("0.00"),
+                    Invoice.payment_status != PaymentStatus.PAID,
+                    Invoice.status != InvoiceStatus.REJECTED,
                     or_(
                         Invoice.payment_status == PaymentStatus.OVERDUE,
-                        and_(
-                            Invoice.due_date < today,
-                            Invoice.remaining_amount > Decimal("0.00"),
-                            Invoice.status != InvoiceStatus.REJECTED
-                        )
+                        Invoice.due_date < today
                     )
                 )
             else:

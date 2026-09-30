@@ -169,9 +169,7 @@ class PaymentService:
         # Update payment status
         if new_remaining_amount <= Decimal("0.00"):
             invoice.payment_status = PaymentStatus.PAID
-            # If approved, also set invoice status to PAID
-            if invoice.status == InvoiceStatus.APPROVED:
-                invoice.status = InvoiceStatus.PAID
+            invoice.status = InvoiceStatus.PAID
         elif new_paid_amount > Decimal("0.00"):
             invoice.payment_status = PaymentStatus.PARTIALLY_PAID
         else:
