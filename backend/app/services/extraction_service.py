@@ -48,11 +48,15 @@ class ExtractionService:
         if is_image and hasattr(ai_provider, "extract_from_image"):
             try:
                 mime_type = "image/png" if doc_ext == "png" else ("image/webp" if doc_ext == "webp" else "image/jpeg")
-                extracted_data = await ai_provider.extract_from_image(
+                vision_cand = await ai_provider.extract_from_image(
                     image_path=invoice.document_path,
                     mime_type=mime_type,
                     metadata={"invoice_id": str(invoice.id)}
                 )
+                if vision_cand and (vision_cand.total_amount > Decimal("0.00") or vision_cand.subtotal > Decimal("0.00") or (vision_cand.vendor_name and vision_cand.vendor_name not in ("Unassigned Vendor", "Unknown Vendor", ""))):
+                    extracted_data = vision_cand
+                else:
+                    logger.warning(f"Vision AI returned unverified/zero result for image {invoice.id}. Falling back to OCR...")
             except Exception as vision_err:
                 logger.warning(f"Image extraction via provider failed: {vision_err}. Falling back to OCR...")
 
@@ -68,6 +72,10 @@ class ExtractionService:
 
             try:
                 extracted_data = await ai_provider.extract_invoice(raw_text, metadata={"invoice_id": str(invoice.id)})
+                if extracted_data and extracted_data.total_amount <= Decimal("0.00") and extracted_data.subtotal <= Decimal("0.00"):
+                    from app.ai.mock_provider import MockAIProvider
+                    fallback_provider = MockAIProvider()
+                    extracted_data = await fallback_provider.extract_invoice(raw_text, metadata={"invoice_id": str(invoice.id)})
             except Exception as ext_err:
                 logger.warning(f"AI Provider failed ({ext_err}). Falling back to MockAIProvider...")
                 from app.ai.mock_provider import MockAIProvider

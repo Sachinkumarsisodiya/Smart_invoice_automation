@@ -156,10 +156,11 @@ class MockAIProvider(BaseAIProvider):
                     continue
                 if re.search(r"^(?:invoice|inv|bill|dc|po|se|alh)[-_/0-9:#\s]", clean_l, re.IGNORECASE):
                     continue
-                if any(c.isdigit() for c in clean_l):
+                is_comp_keyword = bool(re.search(r"\b(?:interiors|pvt\s*ltd|ltd|solutions|enterprises|technologies|services|logistics|packaging|furnishing|motors|industries|store|corp|llp|traders|agency|hospitality|events|home|furniture|gems|jewellers|electricals|hardware)\b", clean_l, re.IGNORECASE))
+                if any(c.isdigit() for c in clean_l) and not is_comp_keyword:
                     continue
 
-                if re.search(r"\b(?:interiors|pvt\s*ltd|ltd|solutions|enterprises|technologies|services|logistics|packaging|furnishing|motors|industries|store|corp|llp|traders|agency|hospitality|events|home|furniture|gems|jewellers|electricals|hardware)\b", clean_l, re.IGNORECASE):
+                if is_comp_keyword:
                     cand_companies.append(clean_l)
                 elif clean_l.isupper() and len(clean_l) > 3 and not re.search(r"invoice|tax|bill|credit|original|duplicate|receipt|proforma|bank|payment", clean_l, re.IGNORECASE):
                     cand_companies.append(clean_l)

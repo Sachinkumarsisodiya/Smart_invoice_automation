@@ -30,11 +30,13 @@ FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
-# Install runtime system libraries (libpq, curl for healthcheck, pymupdf font deps)
+# Install runtime system libraries (libpq, curl for healthcheck, pymupdf font deps, tesseract-ocr)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
     ca-certificates \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder
