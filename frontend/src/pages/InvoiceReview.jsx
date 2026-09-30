@@ -71,8 +71,8 @@ export const InvoiceReview = () => {
         const blob = await invoiceService.getDocumentBlob(id);
         const url = URL.createObjectURL(blob);
         setDocumentBlobUrl(url);
-        const ext = data.document_path?.split('.').pop().toLowerCase() || 'pdf';
-        setDocType(ext);
+        const isPdf = blob.type.includes('pdf') || (data.document_path && data.document_path.toLowerCase().endsWith('.pdf'));
+        setDocType(isPdf ? 'pdf' : (data.document_path?.split('.').pop().toLowerCase() || 'pdf'));
       } catch (docErr) {
         console.error('Failed to stream document:', docErr);
       }

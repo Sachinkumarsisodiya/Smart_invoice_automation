@@ -90,8 +90,8 @@ export const InvoiceDetail = () => {
         const url = URL.createObjectURL(blob);
         setDocumentBlobUrl(url);
 
-        const ext = invData.document_path.split('.').pop().toLowerCase();
-        setDocType(ext);
+        const isPdf = blob.type.includes('pdf') || (invData.document_path && invData.document_path.toLowerCase().endsWith('.pdf'));
+        setDocType(isPdf ? 'pdf' : (invData.document_path?.split('.').pop().toLowerCase() || 'pdf'));
       } catch (docErr) {
         console.error('Failed to load document stream:', docErr);
       }

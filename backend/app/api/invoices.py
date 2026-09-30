@@ -237,7 +237,7 @@ def get_invoice_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Secure document streaming for authorized users."""
+    """Secure document streaming for authorized users with dynamic PDF fallback."""
     invoice = InvoiceService.get_invoice(db, id)
     file_path = invoice.document_path
 
@@ -255,14 +255,34 @@ def get_invoice_document(
                             f.write(doc_bytes)
                         logger.info(f"Restored ephemeral file on disk for document stream: {file_path}")
                     else:
-                        ext = "pdf"
-                        media_type = "application/pdf"
-                        return Response(content=doc_bytes, media_type=media_type)
+                        return Response(content=doc_bytes, media_type="application/pdf")
                 except Exception as restore_err:
                     logger.warning(f"Failed to restore ephemeral document from b64: {restore_err}")
 
+    # Fallback: Dynamic High-Resolution Digital Invoice PDF Generator
     if not file_path or not os.path.exists(file_path):
-        raise NotFoundException("Physical document file not found on disk")
+        try:
+            from app.services.pdf_generator_service import generate_digital_invoice_pdf_bytes
+            from fastapi import Response
+            pdf_bytes = generate_digital_invoice_pdf_bytes(invoice)
+            
+            # Save generated PDF to disk so future requests serve directly
+            if file_path:
+                try:
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                    with open(file_path, "wb") as f:
+                        f.write(pdf_bytes)
+                except Exception as save_err:
+                    logger.warning(f"Could not persist generated fallback PDF to disk: {save_err}")
+            
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"inline; filename=invoice_{invoice.invoice_number}.pdf"}
+            )
+        except Exception as pdf_gen_err:
+            logger.error(f"Failed to generate digital invoice PDF fallback: {pdf_gen_err}")
+            raise NotFoundException("Physical document file not found on disk and fallback PDF generation failed.")
 
     ext = file_path.split(".")[-1].lower()
     media_type = "application/pdf" if ext == "pdf" else f"image/{ext}"
