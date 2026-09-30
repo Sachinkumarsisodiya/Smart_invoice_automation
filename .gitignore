@@ -62,6 +62,11 @@ venv.bak/
 *.sqlite3
 storage/invoices/*
 !storage/invoices/.gitkeep
+backend/storage/invoices/*
+!backend/storage/invoices/.gitkeep
+backend/storage/exports/*
+!backend/storage/exports/.gitkeep
+
 
 # Node / Frontend
 node_modules/

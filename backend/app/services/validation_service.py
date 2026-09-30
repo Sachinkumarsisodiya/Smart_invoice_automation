@@ -49,7 +49,7 @@ class ValidationService:
 
             if not is_math_consistent:
                 errors.append(
-                    f"Financial reconciliation discrepancy: Subtotal ({subtotal}) + Tax ({tax_amount}) = {expected_total}, but Total is {total_amount} (Diff: {math_diff})"
+                    f"Mathematical inconsistency detected: Subtotal ({subtotal}) + Tax ({tax_amount}) = {expected_total}, but Total is {total_amount} (Diff: {math_diff})"
                 )
         else:
             is_math_consistent = total_amount > 0

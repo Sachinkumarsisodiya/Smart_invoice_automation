@@ -64,14 +64,15 @@ class InvoiceService:
             target_vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
 
         if not target_vendor:
-            # Fallback to first available vendor or create default "Unassigned Supplier"
-            target_vendor = db.query(Vendor).first()
+            # Fallback to dedicated "Unassigned Vendor" placeholder until AI extraction finishes
+            target_vendor = db.query(Vendor).filter(Vendor.name == "Unassigned Vendor").first()
             if not target_vendor:
                 target_vendor = Vendor(
-                    name="Unassigned Supplier",
-                    email="vendor@unassigned.local",
+                    name="Unassigned Vendor",
+                    email=None,
                     category="General",
-                    payment_terms_days=30
+                    payment_terms_days=30,
+                    active=True
                 )
                 db.add(target_vendor)
                 db.flush()

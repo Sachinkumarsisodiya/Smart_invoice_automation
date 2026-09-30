@@ -55,7 +55,7 @@ class DocumentExtractor:
                 
                 doc.close()
 
-            elif file_ext.lower() in ("png", "jpg", "jpeg"):
+            elif file_ext.lower() in ("png", "jpg", "jpeg", "webp", "bmp", "tiff"):
                 with Image.open(file_path) as img:
                     result["metadata"] = {
                         "format": img.format,
@@ -64,8 +64,21 @@ class DocumentExtractor:
                         "mode": img.mode,
                     }
                 result["is_digital"] = False
-                result["needs_ocr"] = True  # Image files require OCR in Phase 3
-                result["text"] = "[Image Document - Queued for OCR Extraction]"
+                
+                # Execute OCR directly on image
+                from app.document.ocr import OCREngine
+                ocr_data = OCREngine.run_ocr(file_path)
+                extracted_text = (ocr_data.get("text") or "").strip()
+                
+                if extracted_text:
+                    result["text"] = extracted_text
+                    result["char_count"] = len(extracted_text)
+                    result["needs_ocr"] = False
+                    result["ocr_engine"] = ocr_data.get("engine")
+                else:
+                    result["text"] = "[Image Document - OCR in Progress]"
+                    result["char_count"] = 0
+                    result["needs_ocr"] = True
 
         except Exception as e:
             logger.error(f"Error during document extraction on {file_path}: {str(e)}")

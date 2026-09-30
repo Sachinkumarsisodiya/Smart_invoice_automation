@@ -2,26 +2,24 @@ import io
 import os
 import imaplib
 import email
-import hashlib
 from email.header import decode_header
 from typing import List, Dict, Any, Optional
-from decimal import Decimal
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
 
 from app.config import settings
 from app.core.logging import logger
 from app.models.user import User, UserRole
-from app.models.invoice import Invoice
 from app.models.notification import Notification, NotificationType
 from app.services.invoice_service import InvoiceService
 from app.services.extraction_service import ExtractionService
 
 
 class EmailIngestionService:
-    """Automated IMAP Email Ingestion Service for SmartInvoice.
-    Connects to email servers (e.g., Gmail via SSL), scans for emails with invoice attachments,
-    and ingests them into the processing pipeline.
+    """
+    Automated IMAP Email Ingestion Service for SmartInvoice.
+    Connects to email servers (e.g., Gmail, Outlook, private IMAP) via SSL,
+    scans for emails with invoice attachments, and ingests them into the processing pipeline.
     """
 
     @classmethod
@@ -41,9 +39,24 @@ class EmailIngestionService:
         return "".join(result)
 
     @classmethod
-    async def sync_mailbox(cls, db: Session, user: Optional[User] = None) -> Dict[str, Any]:
-        """Connects to IMAP server, checks for emails with attachments,
-        processes new invoices, and stores them in SmartInvoice.
+    def _run_async(cls, coro):
+        import asyncio
+        import concurrent.futures
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    return executor.submit(asyncio.run, coro).result()
+            else:
+                return loop.run_until_complete(coro)
+        except RuntimeError:
+            return asyncio.run(coro)
+
+    @classmethod
+    def sync_mailbox(cls, db: Session, user: Optional[User] = None) -> Dict[str, Any]:
+        """
+        Connects to IMAP server, checks for unread emails with attachments,
+        processes invoices, and stores them in SmartInvoice.
         """
         if not settings.IMAP_ENABLED:
             return {
@@ -63,6 +76,7 @@ class EmailIngestionService:
                 "errors": []
             }
 
+        # Resolve ingestion owner
         target_user = user
         if not target_user:
             target_user = (
@@ -94,34 +108,29 @@ class EmailIngestionService:
             mail.login(settings.IMAP_USER, settings.IMAP_PASSWORD)
             mail.select(settings.IMAP_FOLDER)
 
-            # 1. Search UNSEEN first
-            status, messages = mail.search(None, "UNSEEN")
-            email_ids = messages[0].split() if (status == "OK" and messages and messages[0]) else []
+            # Search criteria
+            search_criteria = settings.IMAP_SEARCH_CRITERIA or "UNSEEN"
+            status, messages = mail.search(None, search_criteria)
 
-            # 2. If no UNSEEN messages, inspect recent messages from ALL to ensure no read attachment was missed
-            if not email_ids:
-                status, all_messages = mail.search(None, "ALL")
-                if status == "OK" and all_messages and all_messages[0]:
-                    all_ids = all_messages[0].split()
-                    # Inspect the latest 20 emails
-                    email_ids = all_ids[-20:]
-
-            if not email_ids:
+            if status != "OK" or not messages[0]:
+                logger.info("No matching emails found in mailbox.")
                 return {
                     "success": True,
-                    "message": f"No new invoice attachments found in {settings.IMAP_USER}.",
+                    "message": f"Connected to {settings.IMAP_USER}. No new emails with criteria '{search_criteria}'.",
                     "fetched_count": 0,
                     "invoices": [],
                     "errors": []
                 }
 
-            logger.info(f"Inspecting {len(email_ids)} emails for invoice attachments...")
+            email_ids = messages[0].split()
+            logger.info(f"Found {len(email_ids)} emails to inspect for attachments.")
+
             allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg"}
 
-            for e_id in reversed(email_ids):
+            for e_id in email_ids:
                 try:
                     res, msg_data = mail.fetch(e_id, "(RFC822)")
-                    if res != "OK" or not msg_data or not msg_data[0]:
+                    if res != "OK":
                         continue
 
                     raw_email = msg_data[0][1]
@@ -131,7 +140,9 @@ class EmailIngestionService:
                     sender = cls._decode_header_str(msg.get("From"))
 
                     for part in msg.walk():
-                        filename = part.get_filename() or part.get_param("name")
+                        # Check if part is an attachment
+                        content_disposition = str(part.get("Content-Disposition", ""))
+                        filename = part.get_filename()
 
                         if filename:
                             filename = cls._decode_header_str(filename)
@@ -142,13 +153,7 @@ class EmailIngestionService:
                                 if not payload:
                                     continue
 
-                                # Check duplicate by payload hash to prevent double ingestion
-                                sha256_hash = hashlib.sha256(payload).hexdigest()
-                                existing = db.query(Invoice).filter(Invoice.document_hash == sha256_hash).first()
-                                if existing:
-                                    logger.info(f"Skipping attachment {filename} - already ingested as invoice #{existing.invoice_number}")
-                                    continue
-
+                                # Wrap in an UploadFile compatible object
                                 file_obj = io.BytesIO(payload)
                                 upload_file = UploadFile(
                                     file=file_obj,
@@ -164,21 +169,22 @@ class EmailIngestionService:
                                         current_user=target_user
                                     )
 
-                                    # 2. Trigger async extraction pipeline directly
-                                    extracted_invoice = await ExtractionService.process_invoice_extraction(
-                                        db=db,
-                                        invoice_id=invoice.id,
-                                        current_user=target_user
+                                    # 2. Trigger automatic AI Extraction
+                                    extracted_invoice = cls._run_async(
+                                        ExtractionService.process_invoice_extraction(
+                                            db=db,
+                                            invoice_id=invoice.id,
+                                            current_user=target_user
+                                        )
                                     )
-
                                     confidence = getattr(extracted_invoice, 'extraction_confidence', 0) or 0
                                     is_flagged = extracted_invoice.extraction_status in ("FAILED", "MANUAL") or extracted_invoice.total_amount <= Decimal("0.00")
 
                                     # 3. Create Notification
                                     notif = Notification(
                                         user_id=target_user.id,
-                                        title="⚠️ Invoice Flagged for Review" if is_flagged else "New Verified Invoice Ingested",
-                                        message=f"Invoice #{extracted_invoice.invoice_number} from '{sender}' (Total: INR {extracted_invoice.total_amount}). Extracted with confidence {confidence}%.",
+                                        title="⚠️ Invoice Flagged for Manual Review" if is_flagged else "New Verified Invoice Ingested",
+                                        message=f"Invoice #{extracted_invoice.invoice_number} from '{sender}' could not be fully verified automatically (Total: ₹{extracted_invoice.total_amount}). Marked for safety review." if is_flagged else f"Invoice #{extracted_invoice.invoice_number} received from '{sender}' (Total: ₹{extracted_invoice.total_amount}). Extracted with confidence {confidence}%.",
                                         type=NotificationType.WARNING if is_flagged else NotificationType.SUCCESS,
                                         is_read=False
                                     )
@@ -191,9 +197,10 @@ class EmailIngestionService:
                                         "filename": filename,
                                         "sender": sender,
                                         "subject": subject,
-                                        "confidence_score": str(confidence)
+                                        "confidence_score": confidence
                                     })
                                     logger.info(f"Successfully ingested email invoice #{extracted_invoice.invoice_number} from {sender}")
+
 
                                 except Exception as upload_err:
                                     db.rollback()
@@ -202,33 +209,23 @@ class EmailIngestionService:
                                     errors.append(err_msg)
 
                     if settings.IMAP_MARK_SEEN:
-                        try:
-                            mail.store(e_id, "+FLAGS", "\\Seen")
-                        except Exception:
-                            pass
+                        mail.store(e_id, "+FLAGS", "\\Seen")
 
                 except Exception as msg_err:
                     err_msg = f"Error processing message ID {e_id}: {str(msg_err)}"
                     logger.error(err_msg)
                     errors.append(err_msg)
 
-            count = len(processed_invoices)
-            msg_str = (
-                f"Synced {count} new invoice{'s' if count != 1 else ''} from {settings.IMAP_USER}."
-                if count > 0
-                else f"Mailbox {settings.IMAP_USER} is up to date (0 new invoices found)."
-            )
-
             return {
                 "success": True,
-                "message": msg_str,
-                "fetched_count": count,
+                "message": f"Synced {len(processed_invoices)} invoices from {settings.IMAP_USER}.",
+                "fetched_count": len(processed_invoices),
                 "invoices": processed_invoices,
                 "errors": errors
             }
 
         except imaplib.IMAP4.error as imap_err:
-            err_msg = f"IMAP Authentication error for {settings.IMAP_USER}: {str(imap_err)}"
+            err_msg = f"IMAP Authentication / Connection error for {settings.IMAP_USER}: {str(imap_err)}"
             logger.error(err_msg)
             return {
                 "success": False,
@@ -257,4 +254,3 @@ class EmailIngestionService:
                     mail.logout()
                 except Exception:
                     pass
-

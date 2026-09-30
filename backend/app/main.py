@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     
     # Ensure clean database state on startup
     try:
-        seed_database(wipe_demo_data=True)
+        seed_database(wipe_demo_data=False)
     except Exception as e:
         logger.error(f"Database initialization encountered error: {e}")
         

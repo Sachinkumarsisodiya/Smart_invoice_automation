@@ -95,9 +95,9 @@ def clean_demo_data(db: Session):
         logger.error(f"Error purging demo data: {e}")
 
 
-def seed_database(db: Session | None = None, wipe_demo_data: bool = True):
+def seed_database(db: Session | None = None, wipe_demo_data: bool = False):
     """
-    Initializes clean workspace with primary Admin user and zero dummy invoices/expenses.
+    Initializes clean workspace with primary Admin, Staff, and Viewer users and base configuration.
     """
     close_session = False
     if db is None:
@@ -110,7 +110,7 @@ def seed_database(db: Session | None = None, wipe_demo_data: bool = True):
         if wipe_demo_data:
             clean_demo_data(db)
 
-        logger.info("Setting up clean admin accounts...")
+        logger.info("Setting up clean user accounts...")
 
         demo_users = [
             {
@@ -124,6 +124,18 @@ def seed_database(db: Session | None = None, wipe_demo_data: bool = True):
                 "password": "Password123!",
                 "full_name": "Admin Local",
                 "role": UserRole.ADMIN
+            },
+            {
+                "email": "staff@smartinvoice.local",
+                "password": "Password123!",
+                "full_name": "Staff Member",
+                "role": UserRole.STAFF
+            },
+            {
+                "email": "viewer@smartinvoice.local",
+                "password": "Password123!",
+                "full_name": "Viewer User",
+                "role": UserRole.VIEWER
             }
         ]
 
@@ -139,16 +151,130 @@ def seed_database(db: Session | None = None, wipe_demo_data: bool = True):
                 )
                 db.add(existing)
                 db.flush()
-                logger.info(f"Initialized Admin user: {u['email']}")
+                logger.info(f"Initialized user: {u['email']} ({u['role']})")
             else:
                 existing.hashed_password = get_password_hash(u["password"])
                 existing.is_active = True
                 existing.role = u["role"]
                 db.flush()
-                logger.info(f"Updated password hash for Admin: {u['email']}")
+
+        # Ensure base Unassigned Vendor exists
+        unassigned_v = db.query(Vendor).filter(Vendor.name == "Unassigned Vendor").first()
+        if not unassigned_v:
+            unassigned_v = Vendor(
+                name="Unassigned Vendor",
+                email=None,
+                category="General",
+                payment_terms_days=30,
+                active=True
+            )
+            db.add(unassigned_v)
+            db.flush()
+
+        # Seed core base vendors if none exist
+        if db.query(Vendor).count() < 3:
+            default_vendors = [
+                Vendor(name="Apex Cloud & IT Services", email="billing@apexcloud.io", gstin="07AAAAA0000A1Z5", category="IT & Software", payment_terms_days=15, active=True),
+                Vendor(name="National Logistics Express", email="accounts@nationallogistics.com", gstin="27BBBBB1111B1Z6", category="Logistics", payment_terms_days=30, active=True),
+                Vendor(name="Delta Office Solutions", email="finance@deltaoffice.com", gstin="08CCCCC2222C1Z7", category="Supplies", payment_terms_days=30, active=True),
+            ]
+            for dv in default_vendors:
+                if not db.query(Vendor).filter(Vendor.name == dv.name).first():
+                    db.add(dv)
+            db.flush()
+
+        # Seed core base invoices/expenses if none exist
+        if db.query(Invoice).count() == 0:
+            first_v = db.query(Vendor).filter(Vendor.name == "Apex Cloud & IT Services").first() or unassigned_v
+            sample_invoices = [
+                Invoice(
+                    id=uuid.uuid4(),
+                    vendor_id=first_v.id,
+                    invoice_number="INV-2026-001",
+                    invoice_date=date.today() - timedelta(days=10),
+                    due_date=date.today() + timedelta(days=20),
+                    subtotal=Decimal("50000.00"),
+                    tax_amount=Decimal("9000.00"),
+                    total_amount=Decimal("59000.00"),
+                    paid_amount=Decimal("0.00"),
+                    remaining_amount=Decimal("59000.00"),
+                    currency="INR",
+                    status=InvoiceStatus.PENDING_REVIEW,
+                    payment_status=PaymentStatus.PENDING,
+                    document_path="./storage/invoices/sample.pdf",
+                    document_hash="sample_hash_001",
+                    extraction_status=ExtractionStatus.SUCCESS,
+                    extraction_confidence=Decimal("95.00")
+                ),
+                Invoice(
+                    id=uuid.uuid4(),
+                    vendor_id=first_v.id,
+                    invoice_number="INV-2026-002",
+                    invoice_date=date.today() - timedelta(days=5),
+                    due_date=date.today() + timedelta(days=25),
+                    subtotal=Decimal("20000.00"),
+                    tax_amount=Decimal("3600.00"),
+                    total_amount=Decimal("23600.00"),
+                    paid_amount=Decimal("0.00"),
+                    remaining_amount=Decimal("23600.00"),
+                    currency="INR",
+                    status=InvoiceStatus.APPROVED,
+                    payment_status=PaymentStatus.PENDING,
+                    document_path="./storage/invoices/sample.pdf",
+                    document_hash="sample_hash_002",
+                    extraction_status=ExtractionStatus.SUCCESS,
+                    extraction_confidence=Decimal("92.00")
+                ),
+                Invoice(
+                    id=uuid.uuid4(),
+                    vendor_id=first_v.id,
+                    invoice_number="INV-2026-003",
+                    invoice_date=date.today() - timedelta(days=1),
+                    due_date=date.today() + timedelta(days=29),
+                    subtotal=Decimal("10000.00"),
+                    tax_amount=Decimal("1800.00"),
+                    total_amount=Decimal("11800.00"),
+                    paid_amount=Decimal("11800.00"),
+                    remaining_amount=Decimal("0.00"),
+                    currency="INR",
+                    status=InvoiceStatus.PAID,
+                    payment_status=PaymentStatus.PAID,
+                    document_path="./storage/invoices/sample.pdf",
+                    document_hash="sample_hash_003",
+                    extraction_status=ExtractionStatus.SUCCESS,
+                    extraction_confidence=Decimal("99.00")
+                )
+            ]
+            for si in sample_invoices:
+                db.add(si)
+            db.flush()
+
+        if db.query(Expense).count() == 0:
+            sample_expenses = [
+                Expense(id=uuid.uuid4(), description="Office internet connectivity", amount=Decimal("2500.00"), category="Utilities", expense_date=date.today()),
+                Expense(id=uuid.uuid4(), description="Software cloud hosting fees", amount=Decimal("15000.00"), category="IT", expense_date=date.today()),
+                Expense(id=uuid.uuid4(), description="Office pantry supplies", amount=Decimal("1200.00"), category="Supplies", expense_date=date.today()),
+            ]
+            for se in sample_expenses:
+                db.add(se)
+            db.flush()
+
+        if db.query(Payment).count() == 0:
+            paid_inv = db.query(Invoice).filter(Invoice.status == InvoiceStatus.PAID).first()
+            if paid_inv:
+                sample_payment = Payment(
+                    id=uuid.uuid4(),
+                    invoice_id=paid_inv.id,
+                    amount=paid_inv.total_amount,
+                    payment_date=date.today(),
+                    payment_method="BANK_TRANSFER",
+                    reference_number="PAY-REF-001"
+                )
+                db.add(sample_payment)
+                db.flush()
 
         db.commit()
-        logger.info("Fresh database initialized with 0 dummy records.")
+        logger.info("Database initialized successfully.")
 
     except Exception as e:
         db.rollback()
@@ -160,4 +286,5 @@ def seed_database(db: Session | None = None, wipe_demo_data: bool = True):
 
 
 if __name__ == "__main__":
-    seed_database(wipe_demo_data=True)
+    seed_database(wipe_demo_data=False)
+
