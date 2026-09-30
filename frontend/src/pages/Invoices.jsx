@@ -214,6 +214,7 @@ export const Invoices = () => {
             <option value="APPROVED">Approved</option>
             <option value="PAID">Paid</option>
             <option value="OVERDUE">Overdue</option>
+            <option value="DUPLICATE">Duplicate</option>
           </select>
         </div>
       </div>
@@ -275,7 +276,11 @@ export const Invoices = () => {
                     <td className="px-5 py-3.5 text-slate-500">{inv.invoice_date}</td>
                     <td className="px-5 py-3.5 text-slate-500">{inv.due_date}</td>
                     <td className="px-5 py-3.5 text-right font-bold text-slate-900">
-                      {parseFloat(inv.total_amount || 0) <= 0 ? (
+                      {inv.status === 'DUPLICATE' ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                          ⚠️ Duplicate Bill (₹0.00)
+                        </span>
+                      ) : parseFloat(inv.total_amount || 0) <= 0 ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                           ⚠️ Needs Review (₹0.00)
                         </span>
@@ -284,19 +289,13 @@ export const Invoices = () => {
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-center">
-                      {inv.extraction_status === 'FAILED' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
-                          NEEDS VERIFICATION
-                        </span>
-                      ) : (
-                        <StatusBadge status={inv.status} />
-                      )}
+                      <StatusBadge status={inv.status} />
                     </td>
                     <td className="px-5 py-3.5 text-center">
                       <StatusBadge status={inv.payment_status} />
                     </td>
                     <td className="px-5 py-3.5 text-right space-x-1">
-                      {parseFloat(inv.remaining_amount || 0) > 0 && inv.status !== 'REJECTED' && hasRole(['ADMIN', 'STAFF']) && (
+                      {parseFloat(inv.remaining_amount || 0) > 0 && inv.status !== 'REJECTED' && inv.status !== 'DUPLICATE' && hasRole(['ADMIN', 'STAFF']) && (
                         <Link
                           to={`/payments?invoice_id=${inv.id}`}
                           title="Pay / Settle Invoice"

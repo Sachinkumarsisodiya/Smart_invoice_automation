@@ -18,6 +18,8 @@ export const StatusBadge = ({ status, type = 'invoice' }) => {
       case 'FAILED':
       case 'OVERDUE':
         return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'DUPLICATE':
+        return 'bg-rose-100 text-rose-800 border-rose-300 font-bold';
       case 'ADMIN':
         return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'STAFF':

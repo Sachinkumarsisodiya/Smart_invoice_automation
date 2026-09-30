@@ -40,9 +40,9 @@ class InvoiceService:
 
         # 3. Check for exact duplicate file hash in database
         existing_duplicate = db.query(Invoice).filter(Invoice.document_hash == sha256_hash).first()
+        is_exact_dup = existing_duplicate is not None
         if existing_duplicate:
             logger.warning(f"Duplicate document hash detected: {sha256_hash} (Invoice #{existing_duplicate.invoice_number})")
-            # Note: in Phase 3 full duplicate detection engine is activated, but we record warning here
 
         # 4. Save file to secure storage directory
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -84,6 +84,14 @@ class InvoiceService:
         today = date.today()
         due_date = today + timedelta(days=target_vendor.payment_terms_days or 30)
 
+        initial_status = InvoiceStatus.DUPLICATE if is_exact_dup else (
+            InvoiceStatus.PROCESSING if extraction_data.get("needs_ocr") else InvoiceStatus.PENDING_REVIEW
+        )
+        initial_notes = (
+            f"⚠️ DUPLICATE DOCUMENT: Exact file match with Invoice #{existing_duplicate.invoice_number}"
+            if is_exact_dup else f"Uploaded by {current_user.full_name} ({current_user.email})"
+        )
+
         invoice = Invoice(
             id=file_id,
             vendor_id=target_vendor.id,
@@ -96,14 +104,14 @@ class InvoiceService:
             paid_amount=Decimal("0.00"),
             remaining_amount=Decimal("0.00"),
             currency="INR",
-            status=InvoiceStatus.PROCESSING if extraction_data.get("needs_ocr") else InvoiceStatus.PENDING_REVIEW,
+            status=initial_status,
             payment_status=PaymentStatus.PENDING,
             document_path=saved_filepath,
             document_hash=sha256_hash,
-            extraction_status=ExtractionStatus.SUCCESS if extraction_data.get("is_digital") else ExtractionStatus.PENDING,
-            extraction_confidence=Decimal("85.00") if extraction_data.get("is_digital") else Decimal("50.00"),
+            extraction_status=ExtractionStatus.FAILED if is_exact_dup else (ExtractionStatus.SUCCESS if extraction_data.get("is_digital") else ExtractionStatus.PENDING),
+            extraction_confidence=Decimal("0.00") if is_exact_dup else (Decimal("85.00") if extraction_data.get("is_digital") else Decimal("50.00")),
             raw_extracted_data=extraction_data,
-            notes=f"Uploaded by {current_user.full_name} ({current_user.email})"
+            notes=initial_notes
         )
 
         db.add(invoice)

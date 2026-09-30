@@ -25,7 +25,7 @@ class AnalyticsService:
         """Calculates real-time financial and operational metrics for the executive dashboard."""
         today = date.today()
 
-        # 1. Invoices Metrics (Excluding Rejected)
+        # 1. Invoices Metrics (Excluding Rejected & Duplicate)
         inv_stats = db.execute(
             select(
                 func.count(Invoice.id).label("total_count"),
@@ -33,7 +33,10 @@ class AnalyticsService:
                 func.coalesce(func.sum(Invoice.paid_amount), Decimal("0.00")).label("total_paid"),
                 func.coalesce(func.sum(Invoice.remaining_amount), Decimal("0.00")).label("total_remaining"),
                 func.coalesce(func.avg(Invoice.extraction_confidence), Decimal("0.00")).label("avg_confidence"),
-            ).where(Invoice.status != InvoiceStatus.REJECTED)
+            ).where(
+                Invoice.status != InvoiceStatus.REJECTED,
+                Invoice.status != InvoiceStatus.DUPLICATE
+            )
         ).one()
 
         # 2. Overdue Invoices
@@ -44,7 +47,8 @@ class AnalyticsService:
             ).where(
                 Invoice.due_date < today,
                 Invoice.remaining_amount > Decimal("0.00"),
-                Invoice.status != InvoiceStatus.REJECTED
+                Invoice.status != InvoiceStatus.REJECTED,
+                Invoice.status != InvoiceStatus.DUPLICATE
             )
         ).one()
 
@@ -115,7 +119,8 @@ class AnalyticsService:
                 .where(
                     Invoice.invoice_date >= cur_month,
                     Invoice.invoice_date < next_month,
-                    Invoice.status != InvoiceStatus.REJECTED
+                    Invoice.status != InvoiceStatus.REJECTED,
+                    Invoice.status != InvoiceStatus.DUPLICATE
                 )
             ) or Decimal("0.00")
 
@@ -175,7 +180,10 @@ class AnalyticsService:
                 func.count(Invoice.id).label("count")
             )
             .join(Vendor, Invoice.vendor_id == Vendor.id)
-            .where(Invoice.status != InvoiceStatus.REJECTED)
+            .where(
+                Invoice.status != InvoiceStatus.REJECTED,
+                Invoice.status != InvoiceStatus.DUPLICATE
+            )
             .group_by(Vendor.category)
         ).all()
 
@@ -245,7 +253,10 @@ class AnalyticsService:
                 func.count(Invoice.id).label("invoice_count")
             )
             .join(Invoice, Vendor.id == Invoice.vendor_id)
-            .where(Invoice.status != InvoiceStatus.REJECTED)
+            .where(
+                Invoice.status != InvoiceStatus.REJECTED,
+                Invoice.status != InvoiceStatus.DUPLICATE
+            )
             .group_by(Vendor.id, Vendor.name, Vendor.category)
             .order_by(desc("total_invoiced"))
             .limit(limit)

@@ -165,21 +165,61 @@ class ExtractionService:
             is_valid = False
 
         # 6. Update Invoice Database Record
-        invoice.invoice_number = extracted_data.invoice_number
-        invoice.invoice_date = inv_date_parsed
-        invoice.due_date = due_date_parsed
-        invoice.subtotal = extracted_data.subtotal
-        invoice.tax_amount = extracted_data.tax_amount
-        invoice.total_amount = extracted_data.total_amount
-        invoice.remaining_amount = max(Decimal("0.00"), extracted_data.total_amount - invoice.paid_amount)
-        invoice.currency = extracted_data.currency
-        invoice.extraction_confidence = extracted_data.confidence_score
-        
-        if not is_valid or extracted_data.total_amount <= Decimal("0.00"):
+        if is_duplicate or invoice.status == InvoiceStatus.DUPLICATE:
+            invoice.invoice_number = extracted_data.invoice_number if (extracted_data and extracted_data.invoice_number and extracted_data.invoice_number != "INV-UNKNOWN") else invoice.invoice_number
+            invoice.invoice_date = inv_date_parsed
+            invoice.due_date = due_date_parsed
+            invoice.subtotal = Decimal("0.00")
+            invoice.tax_amount = Decimal("0.00")
+            invoice.total_amount = Decimal("0.00")
+            invoice.remaining_amount = Decimal("0.00")
+            invoice.extraction_confidence = Decimal("0.00")
+            invoice.extraction_status = ExtractionStatus.FAILED
+            invoice.status = InvoiceStatus.DUPLICATE
+            
+            dup_target = db.query(Invoice).filter(Invoice.id == dup_id).first() if dup_id else None
+            dup_ref = f"#{dup_target.invoice_number}" if dup_target else "original record"
+            invoice.notes = f"⚠️ DUPLICATE INVOICE ALERT: Matched existing Invoice {dup_ref} ({match_reason or 'DOCUMENT_HASH'})"
+
+            # Create notification for duplicate detection
+            try:
+                from app.services.notification_service import NotificationService
+                from app.models.notification import NotificationType
+                from app.models.user import UserRole
+                NotificationService.create_role_notification(
+                    db=db,
+                    roles=[UserRole.ADMIN, UserRole.STAFF],
+                    title="⚠️ Duplicate Invoice Submission Detected",
+                    message=f"Duplicate invoice detected ({invoice.notes}). Set to ₹0.00 total liability.",
+                    type=NotificationType.ALERT,
+                    link=f"/invoices/{invoice.id}"
+                )
+            except Exception as notif_err:
+                logger.warning(f"Failed to trigger duplicate notification: {notif_err}")
+
+        elif not is_valid or extracted_data.total_amount <= Decimal("0.00"):
+            invoice.invoice_number = extracted_data.invoice_number
+            invoice.invoice_date = inv_date_parsed
+            invoice.due_date = due_date_parsed
+            invoice.subtotal = extracted_data.subtotal
+            invoice.tax_amount = extracted_data.tax_amount
+            invoice.total_amount = extracted_data.total_amount
+            invoice.remaining_amount = max(Decimal("0.00"), extracted_data.total_amount - invoice.paid_amount)
+            invoice.currency = extracted_data.currency
+            invoice.extraction_confidence = extracted_data.confidence_score
             invoice.extraction_status = ExtractionStatus.FAILED if extracted_data.total_amount <= Decimal("0.00") else ExtractionStatus.MANUAL
             invoice.status = InvoiceStatus.PENDING_REVIEW
             invoice.notes = f"⚠️ Financial Safety Flag: {'; '.join(validation_errors)}"
         else:
+            invoice.invoice_number = extracted_data.invoice_number
+            invoice.invoice_date = inv_date_parsed
+            invoice.due_date = due_date_parsed
+            invoice.subtotal = extracted_data.subtotal
+            invoice.tax_amount = extracted_data.tax_amount
+            invoice.total_amount = extracted_data.total_amount
+            invoice.remaining_amount = max(Decimal("0.00"), extracted_data.total_amount - invoice.paid_amount)
+            invoice.currency = extracted_data.currency
+            invoice.extraction_confidence = extracted_data.confidence_score
             invoice.extraction_status = ExtractionStatus.SUCCESS
             invoice.status = InvoiceStatus.PENDING_REVIEW
             
