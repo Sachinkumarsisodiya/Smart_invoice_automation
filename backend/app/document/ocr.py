@@ -5,41 +5,20 @@ from PIL import Image
 from app.core.logging import logger
 
 try:
-    from rapidocr_onnxruntime import RapidOCR
-    RAPIDOCR_AVAILABLE = True
-except ImportError:
-    RAPIDOCR_AVAILABLE = False
-
-try:
     import pytesseract
     PYTESSERACT_AVAILABLE = True
 except ImportError:
     PYTESSERACT_AVAILABLE = False
 
-_rapid_ocr_instance: Optional[Any] = None
-
-
-def get_rapid_ocr() -> Optional[Any]:
-    global _rapid_ocr_instance
-    if _rapid_ocr_instance is None and RAPIDOCR_AVAILABLE:
-        try:
-            _rapid_ocr_instance = RapidOCR()
-            logger.info("[OCREngine] RapidOCR ONNX runtime initialized successfully.")
-        except Exception as e:
-            logger.warning(f"[OCREngine] Failed to initialize RapidOCR: {e}")
-    return _rapid_ocr_instance
-
 
 class OCREngine:
     @staticmethod
     def run_ocr(file_path: str) -> Dict[str, Any]:
-        """Runs Optical Character Recognition on scanned PDF pages or image files.
-        Uses pure-Python ONNX RapidOCR as primary engine (no system C++ Tesseract binary needed).
-        """
+        """Runs Optical Character Recognition on scanned PDF pages or image files using lightweight system PyTesseract."""
         result = {
             "text": "",
             "success": False,
-            "engine": "rapidocr" if RAPIDOCR_AVAILABLE else ("pytesseract" if PYTESSERACT_AVAILABLE else "fallback_pymupdf"),
+            "engine": "pytesseract" if PYTESSERACT_AVAILABLE else "pymupdf",
             "page_count": 1,
             "is_image": False,
             "error": None
@@ -57,34 +36,19 @@ class OCREngine:
                 result["page_count"] = len(doc)
                 extracted_pages = []
 
-                rapid_engine = get_rapid_ocr()
-
                 try:
                     for i in range(len(doc)):
                         page = doc[i]
                         page_text = page.get_text("text").strip()
 
-                        # If page text is sparse (scanned PDF), run OCR
-                        if len(page_text) < 30:
-                            ocr_candidate = ""
+                        # If page text is sparse (scanned PDF), run OCR via PyTesseract
+                        if len(page_text) < 30 and PYTESSERACT_AVAILABLE:
                             try:
                                 pix = page.get_pixmap(dpi=150)
-                                img_bytes = pix.tobytes("png")
-
-                                if rapid_engine:
-                                    ocr_res, _ = rapid_engine(img_bytes)
-                                    if ocr_res:
-                                        lines = [box[1] for box in ocr_res if box and len(box) > 1 and box[1]]
-                                        ocr_candidate = "\n".join(lines).strip()
-
-                                if not ocr_candidate and PYTESSERACT_AVAILABLE:
-                                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                                    tess_res = pytesseract.image_to_string(img).strip()
-                                    if tess_res:
-                                        ocr_candidate = tess_res
-
-                                if len(ocr_candidate) > len(page_text):
-                                    page_text = ocr_candidate
+                                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                                tess_res = pytesseract.image_to_string(img).strip()
+                                if tess_res and len(tess_res) > len(page_text):
+                                    page_text = tess_res
                             except Exception as ocr_err:
                                 logger.warning(f"[OCREngine] PDF Page {i+1} OCR scan warning: {ocr_err}")
 
@@ -117,7 +81,7 @@ class OCREngine:
                             img_resized.save(temp_ocr_path, format="JPEG", quality=85)
                             clean_temp = True
 
-                    # 1. Primary: PyTesseract
+                    # 1. System PyTesseract OCR (<15MB RAM)
                     if PYTESSERACT_AVAILABLE:
                         try:
                             import shutil
@@ -136,23 +100,6 @@ class OCREngine:
                         except Exception as tess_err:
                             logger.warning(f"[OCREngine] PyTesseract failed on {file_path}: {tess_err}")
 
-                    # 2. Fallback: RapidOCR on downscaled image (RAM < 25MB)
-                    rapid_engine = get_rapid_ocr()
-                    if rapid_engine:
-                        try:
-                            ocr_res, _ = rapid_engine(temp_ocr_path)
-                            if ocr_res:
-                                extracted_lines = [box[1].strip() for box in ocr_res if box and len(box) > 1 and box[1]]
-                                text_out = "\n".join(extracted_lines).strip()
-                                if text_out:
-                                    result["text"] = text_out
-                                    result["success"] = True
-                                    result["engine"] = "rapidocr_onnx"
-                                    logger.info(f"[OCREngine] RapidOCR extracted {len(extracted_lines)} lines from {file_path}")
-                                    return result
-                        except Exception as rap_err:
-                            logger.warning(f"[OCREngine] RapidOCR failed on {file_path}: {rap_err}")
-
                 finally:
                     if clean_temp and os.path.exists(temp_ocr_path):
                         try:
@@ -163,7 +110,7 @@ class OCREngine:
                     gc.collect()
 
                 result["text"] = ""
-                result["error"] = "Image OCR engines yielded no text"
+                result["error"] = "Image OCR engine yielded no text"
 
         except Exception as e:
             logger.error(f"[OCREngine] OCR execution failed on {file_path}: {e}")
