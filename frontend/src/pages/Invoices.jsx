@@ -14,6 +14,7 @@ import {
   FileCheck2,
   Mail,
   RefreshCw,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { invoiceService } from '../services/invoiceService';
@@ -196,10 +197,16 @@ export const Invoices = () => {
           <select
             value={statusFilter}
             onChange={(e) => {
-              setStatusFilter(e.target.value);
+              const val = e.target.value;
+              setStatusFilter(val);
               setPage(1);
+              if (val) {
+                setSearchParams({ status: val });
+              } else {
+                setSearchParams({});
+              }
             }}
-            className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-brand-500"
+            className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-brand-500 font-medium"
           >
             <option value="">All Statuses</option>
             <option value="PROCESSING">Processing</option>
@@ -289,6 +296,16 @@ export const Invoices = () => {
                       <StatusBadge status={inv.payment_status} />
                     </td>
                     <td className="px-5 py-3.5 text-right space-x-1">
+                      {parseFloat(inv.remaining_amount || 0) > 0 && inv.status !== 'REJECTED' && hasRole(['ADMIN', 'STAFF']) && (
+                        <Link
+                          to={`/payments?invoice_id=${inv.id}`}
+                          title="Pay / Settle Invoice"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-semibold transition-colors mr-1 shadow-xs"
+                        >
+                          <CreditCard className="w-3 h-3 text-emerald-600" />
+                          <span>Pay</span>
+                        </Link>
+                      )}
                       <Link
                         to={`/invoices/${inv.id}`}
                         title="View Details"

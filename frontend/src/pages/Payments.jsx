@@ -4,7 +4,7 @@ import {
   CheckCircle2, AlertCircle, RefreshCw, IndianRupee, 
   Building2, FileText, ExternalLink, X, ArrowUpRight
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { paymentApi } from '../services/api';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -65,26 +65,37 @@ export const Payments = () => {
     }
   };
 
+  const [searchParams] = useSearchParams();
+
   const fetchUnpaidInvoices = async () => {
     try {
       // Fetch invoices with remaining balance > 0
       const res = await api.get('/invoices', { params: { page_size: 100 } });
       const items = res.data.items || [];
-      // Filter to invoices that are APPROVED or PARTIALLY_PAID and have remaining balance > 0
+      // Filter to invoices that have remaining balance > 0 and are not rejected
       const payable = items.filter(
-        (inv) => (inv.status === 'APPROVED' || inv.payment_status === 'PARTIALLY_PAID') && 
-                 parseFloat(inv.remaining_amount) > 0
+        (inv) => inv.status !== 'REJECTED' && parseFloat(inv.remaining_amount || 0) > 0
       );
       setUnpaidInvoices(payable);
+      return payable;
     } catch (err) {
       console.error('Failed to fetch unpaid invoices:', err);
+      return [];
     }
   };
 
   useEffect(() => {
     fetchPayments();
-    fetchUnpaidInvoices();
-  }, [selectedMethod, startDate, endDate]);
+    fetchUnpaidInvoices().then((payableList) => {
+      const targetId = searchParams.get('invoice_id');
+      if (targetId && payableList.length > 0) {
+        const found = payableList.find((inv) => inv.id === targetId);
+        if (found) {
+          handleOpenRecordModal(found);
+        }
+      }
+    });
+  }, [selectedMethod, startDate, endDate, searchParams]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();

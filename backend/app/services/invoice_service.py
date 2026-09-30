@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Optional, Tuple, List
 from fastapi import UploadFile, Request
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, desc, asc
+from sqlalchemy import or_, and_, desc, asc
 
 from app.config import settings
 from app.core.logging import logger
@@ -140,12 +140,57 @@ class InvoiceService:
         sort_by: str = "created_at",
         sort_order: str = "desc"
     ):
+        today = date.today()
+
+        # Inline auto-transition: Mark any unpaid invoice past its due date as OVERDUE
+        try:
+            db.query(Invoice).filter(
+                Invoice.due_date < today,
+                Invoice.remaining_amount > Decimal("0.00"),
+                Invoice.status.not_in([InvoiceStatus.PAID, InvoiceStatus.REJECTED, InvoiceStatus.OVERDUE])
+            ).update(
+                {Invoice.status: InvoiceStatus.OVERDUE, Invoice.payment_status: PaymentStatus.OVERDUE},
+                synchronize_session=False
+            )
+            db.commit()
+        except Exception as update_err:
+            db.rollback()
+            logger.warning(f"Failed inline overdue status update: {update_err}")
+
         query = db.query(Invoice).options(joinedload(Invoice.vendor))
 
         if status:
-            query = query.filter(Invoice.status == status.upper())
+            st_upper = status.upper()
+            if st_upper == "OVERDUE":
+                query = query.filter(
+                    or_(
+                        Invoice.status == InvoiceStatus.OVERDUE,
+                        Invoice.payment_status == PaymentStatus.OVERDUE,
+                        and_(
+                            Invoice.due_date < today,
+                            Invoice.remaining_amount > Decimal("0.00"),
+                            Invoice.status != InvoiceStatus.REJECTED
+                        )
+                    )
+                )
+            else:
+                query = query.filter(Invoice.status == st_upper)
+
         if payment_status:
-            query = query.filter(Invoice.payment_status == payment_status.upper())
+            pst_upper = payment_status.upper()
+            if pst_upper == "OVERDUE":
+                query = query.filter(
+                    or_(
+                        Invoice.payment_status == PaymentStatus.OVERDUE,
+                        and_(
+                            Invoice.due_date < today,
+                            Invoice.remaining_amount > Decimal("0.00"),
+                            Invoice.status != InvoiceStatus.REJECTED
+                        )
+                    )
+                )
+            else:
+                query = query.filter(Invoice.payment_status == pst_upper)
         if vendor_id:
             query = query.filter(Invoice.vendor_id == vendor_id)
         if search:
