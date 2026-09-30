@@ -100,18 +100,41 @@ class OCREngine:
 
             elif ext in ("png", "jpg", "jpeg", "webp", "bmp", "tiff"):
                 result["is_image"] = True
-                extracted_lines = []
 
-                # 1. Primary: RapidOCR (no system tesseract dependency)
+                # 1. Primary: PyTesseract (lightweight system C++ Tesseract binary)
+                if PYTESSERACT_AVAILABLE:
+                    try:
+                        with Image.open(file_path) as img:
+                            # Convert mode to RGB if RGBA/Palette
+                            if img.mode != "RGB":
+                                img = img.convert("RGB")
+                            
+                            # Downscale high-resolution images to max 1600px to keep OCR memory < 20MB
+                            max_dim = 1600
+                            if max(img.width, img.height) > max_dim:
+                                ratio = max_dim / float(max(img.width, img.height))
+                                new_size = (int(img.width * ratio), int(img.height * ratio))
+                                img_ocr = img.resize(new_size, Image.Resampling.LANCZOS)
+                            else:
+                                img_ocr = img
+
+                            tess_text = pytesseract.image_to_string(img_ocr).strip()
+                            if tess_text:
+                                result["text"] = tess_text
+                                result["success"] = True
+                                result["engine"] = "pytesseract"
+                                logger.info(f"[OCREngine] PyTesseract extracted {len(tess_text)} chars from {file_path}")
+                                return result
+                    except Exception as tess_err:
+                        logger.warning(f"[OCREngine] PyTesseract failed on {file_path}: {tess_err}")
+
+                # 2. Fallback: RapidOCR (if installed)
                 rapid_engine = get_rapid_ocr()
                 if rapid_engine:
                     try:
                         ocr_res, _ = rapid_engine(file_path)
                         if ocr_res:
-                            for box in ocr_res:
-                                if box and len(box) > 1 and box[1]:
-                                    extracted_lines.append(box[1].strip())
-                            
+                            extracted_lines = [box[1].strip() for box in ocr_res if box and len(box) > 1 and box[1]]
                             text_out = "\n".join(extracted_lines).strip()
                             if text_out:
                                 result["text"] = text_out
@@ -121,19 +144,6 @@ class OCREngine:
                                 return result
                     except Exception as rap_err:
                         logger.warning(f"[OCREngine] RapidOCR failed on {file_path}: {rap_err}")
-
-                # 2. Fallback: PyTesseract (if installed on host)
-                if PYTESSERACT_AVAILABLE:
-                    try:
-                        with Image.open(file_path) as img:
-                            tess_text = pytesseract.image_to_string(img).strip()
-                            if tess_text:
-                                result["text"] = tess_text
-                                result["success"] = True
-                                result["engine"] = "pytesseract"
-                                return result
-                    except Exception as tess_err:
-                        logger.warning(f"[OCREngine] PyTesseract failed on {file_path}: {tess_err}")
 
                 result["text"] = ""
                 result["error"] = "Image OCR engines yielded no text"
