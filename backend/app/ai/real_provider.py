@@ -142,7 +142,7 @@ class RealAIProvider(BaseAIProvider):
         is_gemini = self.api_key.startswith("AIza") or "gemini" in self.model_name.lower()
 
         if is_gemini:
-            candidate_models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+            candidate_models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash", "gemini-1.5-flash-8b"]
             if "gemini" in self.model_name and self.model_name not in candidate_models:
                 candidate_models.insert(0, self.model_name)
 
@@ -153,7 +153,7 @@ class RealAIProvider(BaseAIProvider):
                     "contents": [
                         {
                             "parts": [
-                                {"text": f"{system_instruction}\n\nParse this invoice image and return exact structured JSON matching the schema:"},
+                                {"text": f"{system_instruction}\n\nParse this financial invoice image and return exact structured JSON matching the schema:"},
                                 {
                                     "inline_data": {
                                         "mime_type": mime_type,
@@ -174,11 +174,14 @@ class RealAIProvider(BaseAIProvider):
                         res = await client.post(url, json=payload)
                         res.raise_for_status()
                         res_data = res.json()
-                        raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                        parsed_json = clean_json_response(raw_text)
-                        if parsed_json:
-                            logger.info(f"[RealAIProvider] Vision extraction succeeded with model '{model}'")
-                            break
+                        candidates = res_data.get("candidates", [])
+                        if candidates and "content" in candidates[0] and "parts" in candidates[0]["content"]:
+                            parts = candidates[0]["content"]["parts"]
+                            raw_text = "".join([p.get("text", "") for p in parts if "text" in p])
+                            parsed_json = clean_json_response(raw_text)
+                            if parsed_json:
+                                logger.info(f"[RealAIProvider] Gemini Vision extraction succeeded with model '{model}'")
+                                break
                 except Exception as model_err:
                     last_err = model_err
                     logger.warning(f"[RealAIProvider] Gemini Vision model '{model}' attempt failed: {model_err}")
