@@ -20,5 +20,6 @@ slowapi>=0.1.10
 psycopg2-binary>=2.9.9
 psycopg[binary]>=3.1.18
 pytesseract>=0.3.10
+rapidocr-onnxruntime>=1.2.3
 
 

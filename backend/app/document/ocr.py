@@ -101,49 +101,66 @@ class OCREngine:
             elif ext in ("png", "jpg", "jpeg", "webp", "bmp", "tiff"):
                 result["is_image"] = True
 
-                # 1. Primary: PyTesseract (lightweight system C++ Tesseract binary)
-                if PYTESSERACT_AVAILABLE:
-                    try:
-                        with Image.open(file_path) as img:
-                            # Convert mode to RGB if RGBA/Palette
-                            if img.mode != "RGB":
-                                img = img.convert("RGB")
-                            
-                            # Downscale high-resolution images to max 1600px to keep OCR memory < 20MB
-                            max_dim = 1600
-                            if max(img.width, img.height) > max_dim:
-                                ratio = max_dim / float(max(img.width, img.height))
-                                new_size = (int(img.width * ratio), int(img.height * ratio))
-                                img_ocr = img.resize(new_size, Image.Resampling.LANCZOS)
-                            else:
-                                img_ocr = img
+                temp_ocr_path = file_path
+                clean_temp = False
+                try:
+                    with Image.open(file_path) as img:
+                        if img.mode != "RGB":
+                            img = img.convert("RGB")
+                        
+                        max_dim = 1400
+                        if max(img.width, img.height) > max_dim:
+                            ratio = max_dim / float(max(img.width, img.height))
+                            new_size = (int(img.width * ratio), int(img.height * ratio))
+                            img_resized = img.resize(new_size, Image.Resampling.LANCZOS)
+                            temp_ocr_path = f"{file_path}_ocr_temp.jpg"
+                            img_resized.save(temp_ocr_path, format="JPEG", quality=85)
+                            clean_temp = True
 
-                            tess_text = pytesseract.image_to_string(img_ocr).strip()
-                            if tess_text:
-                                result["text"] = tess_text
-                                result["success"] = True
-                                result["engine"] = "pytesseract"
-                                logger.info(f"[OCREngine] PyTesseract extracted {len(tess_text)} chars from {file_path}")
-                                return result
-                    except Exception as tess_err:
-                        logger.warning(f"[OCREngine] PyTesseract failed on {file_path}: {tess_err}")
+                    # 1. Primary: PyTesseract
+                    if PYTESSERACT_AVAILABLE:
+                        try:
+                            import shutil
+                            tess_bin = shutil.which("tesseract") or "/usr/bin/tesseract"
+                            if os.path.exists(tess_bin):
+                                pytesseract.pytesseract.tesseract_cmd = tess_bin
 
-                # 2. Fallback: RapidOCR (if installed)
-                rapid_engine = get_rapid_ocr()
-                if rapid_engine:
-                    try:
-                        ocr_res, _ = rapid_engine(file_path)
-                        if ocr_res:
-                            extracted_lines = [box[1].strip() for box in ocr_res if box and len(box) > 1 and box[1]]
-                            text_out = "\n".join(extracted_lines).strip()
-                            if text_out:
-                                result["text"] = text_out
-                                result["success"] = True
-                                result["engine"] = "rapidocr_onnx"
-                                logger.info(f"[OCREngine] RapidOCR extracted {len(extracted_lines)} lines from {file_path}")
-                                return result
-                    except Exception as rap_err:
-                        logger.warning(f"[OCREngine] RapidOCR failed on {file_path}: {rap_err}")
+                            with Image.open(temp_ocr_path) as ocr_img:
+                                tess_text = pytesseract.image_to_string(ocr_img).strip()
+                                if tess_text and len(tess_text) > 15:
+                                    result["text"] = tess_text
+                                    result["success"] = True
+                                    result["engine"] = "pytesseract"
+                                    logger.info(f"[OCREngine] PyTesseract extracted {len(tess_text)} chars from {file_path}")
+                                    return result
+                        except Exception as tess_err:
+                            logger.warning(f"[OCREngine] PyTesseract failed on {file_path}: {tess_err}")
+
+                    # 2. Fallback: RapidOCR on downscaled image (RAM < 25MB)
+                    rapid_engine = get_rapid_ocr()
+                    if rapid_engine:
+                        try:
+                            ocr_res, _ = rapid_engine(temp_ocr_path)
+                            if ocr_res:
+                                extracted_lines = [box[1].strip() for box in ocr_res if box and len(box) > 1 and box[1]]
+                                text_out = "\n".join(extracted_lines).strip()
+                                if text_out:
+                                    result["text"] = text_out
+                                    result["success"] = True
+                                    result["engine"] = "rapidocr_onnx"
+                                    logger.info(f"[OCREngine] RapidOCR extracted {len(extracted_lines)} lines from {file_path}")
+                                    return result
+                        except Exception as rap_err:
+                            logger.warning(f"[OCREngine] RapidOCR failed on {file_path}: {rap_err}")
+
+                finally:
+                    if clean_temp and os.path.exists(temp_ocr_path):
+                        try:
+                            os.remove(temp_ocr_path)
+                        except Exception:
+                            pass
+                    import gc
+                    gc.collect()
 
                 result["text"] = ""
                 result["error"] = "Image OCR engines yielded no text"
