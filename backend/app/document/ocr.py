@@ -59,37 +59,41 @@ class OCREngine:
 
                 rapid_engine = get_rapid_ocr()
 
-                for i in range(len(doc)):
-                    page = doc[i]
-                    page_text = page.get_text("text").strip()
+                try:
+                    for i in range(len(doc)):
+                        page = doc[i]
+                        page_text = page.get_text("text").strip()
 
-                    # If page text is sparse (scanned PDF), run OCR
-                    if len(page_text) < 30:
-                        ocr_candidate = ""
-                        try:
-                            pix = page.get_pixmap(dpi=200)
-                            img_bytes = pix.tobytes("png")
+                        # If page text is sparse (scanned PDF), run OCR
+                        if len(page_text) < 30:
+                            ocr_candidate = ""
+                            try:
+                                pix = page.get_pixmap(dpi=150)
+                                img_bytes = pix.tobytes("png")
 
-                            if rapid_engine:
-                                ocr_res, _ = rapid_engine(img_bytes)
-                                if ocr_res:
-                                    lines = [box[1] for box in ocr_res if box and len(box) > 1 and box[1]]
-                                    ocr_candidate = "\n".join(lines).strip()
+                                if rapid_engine:
+                                    ocr_res, _ = rapid_engine(img_bytes)
+                                    if ocr_res:
+                                        lines = [box[1] for box in ocr_res if box and len(box) > 1 and box[1]]
+                                        ocr_candidate = "\n".join(lines).strip()
 
-                            if not ocr_candidate and PYTESSERACT_AVAILABLE:
-                                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                                tess_res = pytesseract.image_to_string(img).strip()
-                                if tess_res:
-                                    ocr_candidate = tess_res
+                                if not ocr_candidate and PYTESSERACT_AVAILABLE:
+                                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                                    tess_res = pytesseract.image_to_string(img).strip()
+                                    if tess_res:
+                                        ocr_candidate = tess_res
 
-                            if len(ocr_candidate) > len(page_text):
-                                page_text = ocr_candidate
-                        except Exception as ocr_err:
-                            logger.warning(f"[OCREngine] PDF Page {i+1} OCR scan warning: {ocr_err}")
+                                if len(ocr_candidate) > len(page_text):
+                                    page_text = ocr_candidate
+                            except Exception as ocr_err:
+                                logger.warning(f"[OCREngine] PDF Page {i+1} OCR scan warning: {ocr_err}")
 
-                    extracted_pages.append(page_text)
+                        extracted_pages.append(page_text)
+                finally:
+                    doc.close()
+                    import gc
+                    gc.collect()
 
-                doc.close()
                 combined = "\n--- PAGE BREAK ---\n".join(extracted_pages).strip()
                 result["text"] = combined
                 result["success"] = bool(combined)

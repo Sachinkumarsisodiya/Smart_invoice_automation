@@ -27,9 +27,10 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 15
 
     # AI Configuration
-    AI_PROVIDER: str = "mock"  # "mock" | "real"
+    AI_PROVIDER: str = "gemini"  # "mock" | "real" | "gemini"
     AI_API_KEY: str = ""
-    AI_MODEL_NAME: str = "gpt-4o-mini"
+    GEMINI_API_KEY: str = ""
+    AI_MODEL_NAME: str = "gemini-1.5-flash"
 
     # Celery & Redis
     REDIS_URL: str = "redis://localhost:6379/0"
